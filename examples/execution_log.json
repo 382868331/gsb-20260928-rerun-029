@@ -1,0 +1,1536 @@
+{
+  "map": {
+    "nodes": [
+      "WA",
+      "WB",
+      "WC",
+      "WD",
+      "W1",
+      "P0",
+      "P1",
+      "P2",
+      "P3",
+      "E1",
+      "EA",
+      "EB",
+      "EC",
+      "ED"
+    ],
+    "edges": [
+      [
+        "W1",
+        "P0"
+      ],
+      [
+        "P0",
+        "P1"
+      ],
+      [
+        "P1",
+        "P2"
+      ],
+      [
+        "P2",
+        "P3"
+      ],
+      [
+        "P3",
+        "E1"
+      ],
+      [
+        "WA",
+        "W1"
+      ],
+      [
+        "WB",
+        "W1"
+      ],
+      [
+        "WC",
+        "W1"
+      ],
+      [
+        "WD",
+        "W1"
+      ],
+      [
+        "E1",
+        "EA"
+      ],
+      [
+        "E1",
+        "EB"
+      ],
+      [
+        "E1",
+        "EC"
+      ],
+      [
+        "E1",
+        "ED"
+      ]
+    ],
+    "passages": [
+      {
+        "passage_id": "narrow-corridor",
+        "nodes": [
+          "W1",
+          "P0",
+          "P1",
+          "P2",
+          "P3",
+          "E1"
+        ]
+      }
+    ]
+  },
+  "starvation_limit": 30,
+  "initial_positions": {
+    "r1": "WA",
+    "r2": "WB",
+    "r3": "EA",
+    "r4": "EB"
+  },
+  "records": [
+    {
+      "tick": 0,
+      "robot_id": "r1",
+      "position": "WA",
+      "previous_position": "WA",
+      "action": "assigned",
+      "task_id": "east-1",
+      "destination": "EC",
+      "paused": false
+    },
+    {
+      "tick": 0,
+      "robot_id": "r2",
+      "position": "WB",
+      "previous_position": "WB",
+      "action": "assigned",
+      "task_id": "east-2",
+      "destination": "ED",
+      "paused": false
+    },
+    {
+      "tick": 0,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "EA",
+      "action": "assigned",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 0,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "EB",
+      "action": "assigned",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 0,
+      "robot_id": "r1",
+      "position": "WA",
+      "previous_position": "WA",
+      "action": "assigned",
+      "task_id": "return-r1",
+      "destination": "WA",
+      "paused": false
+    },
+    {
+      "tick": 0,
+      "robot_id": "r2",
+      "position": "WB",
+      "previous_position": "WB",
+      "action": "assigned",
+      "task_id": "return-r2",
+      "destination": "WB",
+      "paused": false
+    },
+    {
+      "tick": 0,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "EA",
+      "action": "assigned",
+      "task_id": "return-r3",
+      "destination": "EA",
+      "paused": false
+    },
+    {
+      "tick": 0,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "EB",
+      "action": "assigned",
+      "task_id": "return-r4",
+      "destination": "EB",
+      "paused": false
+    },
+    {
+      "tick": 1,
+      "robot_id": "r1",
+      "position": "W1",
+      "previous_position": "WA",
+      "action": "move",
+      "task_id": "east-1",
+      "destination": "EC",
+      "paused": false
+    },
+    {
+      "tick": 1,
+      "robot_id": "r2",
+      "position": "WB",
+      "previous_position": "WB",
+      "action": "wait",
+      "task_id": "east-2",
+      "destination": "ED",
+      "paused": false
+    },
+    {
+      "tick": 1,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "EA",
+      "action": "wait",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 1,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "EB",
+      "action": "wait",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 2,
+      "robot_id": "r1",
+      "position": "P0",
+      "previous_position": "W1",
+      "action": "move",
+      "task_id": "east-1",
+      "destination": "EC",
+      "paused": false
+    },
+    {
+      "tick": 2,
+      "robot_id": "r2",
+      "position": "WB",
+      "previous_position": "WB",
+      "action": "wait",
+      "task_id": "east-2",
+      "destination": "ED",
+      "paused": false
+    },
+    {
+      "tick": 2,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "EA",
+      "action": "wait",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 2,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "EB",
+      "action": "wait",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 3,
+      "robot_id": "r1",
+      "position": "P0",
+      "previous_position": "P0",
+      "action": "paused",
+      "task_id": "east-1",
+      "destination": "EC",
+      "paused": true
+    },
+    {
+      "tick": 3,
+      "robot_id": "r2",
+      "position": "W1",
+      "previous_position": "WB",
+      "action": "move",
+      "task_id": "east-2",
+      "destination": "ED",
+      "paused": false
+    },
+    {
+      "tick": 3,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "EA",
+      "action": "wait",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 3,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "EB",
+      "action": "wait",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 4,
+      "robot_id": "r1",
+      "position": "P0",
+      "previous_position": "P0",
+      "action": "paused",
+      "task_id": "east-1",
+      "destination": "EC",
+      "paused": true
+    },
+    {
+      "tick": 4,
+      "robot_id": "r2",
+      "position": "W1",
+      "previous_position": "W1",
+      "action": "wait",
+      "task_id": "east-2",
+      "destination": "ED",
+      "paused": false
+    },
+    {
+      "tick": 4,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "EA",
+      "action": "wait",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 4,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "EB",
+      "action": "wait",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 5,
+      "robot_id": "r1",
+      "position": "P0",
+      "previous_position": "P0",
+      "action": "paused",
+      "task_id": "east-1",
+      "destination": "EC",
+      "paused": true
+    },
+    {
+      "tick": 5,
+      "robot_id": "r2",
+      "position": "W1",
+      "previous_position": "W1",
+      "action": "wait",
+      "task_id": "east-2",
+      "destination": "ED",
+      "paused": false
+    },
+    {
+      "tick": 5,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "EA",
+      "action": "wait",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 5,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "EB",
+      "action": "wait",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 6,
+      "robot_id": "r1",
+      "position": "P1",
+      "previous_position": "P0",
+      "action": "move",
+      "task_id": "east-1",
+      "destination": "EC",
+      "paused": false
+    },
+    {
+      "tick": 6,
+      "robot_id": "r2",
+      "position": "W1",
+      "previous_position": "W1",
+      "action": "wait",
+      "task_id": "east-2",
+      "destination": "ED",
+      "paused": false
+    },
+    {
+      "tick": 6,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "EA",
+      "action": "wait",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 6,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "EB",
+      "action": "wait",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 7,
+      "robot_id": "r1",
+      "position": "P2",
+      "previous_position": "P1",
+      "action": "move",
+      "task_id": "east-1",
+      "destination": "EC",
+      "paused": false
+    },
+    {
+      "tick": 7,
+      "robot_id": "r2",
+      "position": "P0",
+      "previous_position": "W1",
+      "action": "move",
+      "task_id": "east-2",
+      "destination": "ED",
+      "paused": false
+    },
+    {
+      "tick": 7,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "EA",
+      "action": "wait",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 7,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "EB",
+      "action": "wait",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 8,
+      "robot_id": "r1",
+      "position": "P3",
+      "previous_position": "P2",
+      "action": "move",
+      "task_id": "east-1",
+      "destination": "EC",
+      "paused": false
+    },
+    {
+      "tick": 8,
+      "robot_id": "r2",
+      "position": "P1",
+      "previous_position": "P0",
+      "action": "move",
+      "task_id": "east-2",
+      "destination": "ED",
+      "paused": false
+    },
+    {
+      "tick": 8,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "EA",
+      "action": "wait",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 8,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "EB",
+      "action": "wait",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 9,
+      "robot_id": "r1",
+      "position": "E1",
+      "previous_position": "P3",
+      "action": "move",
+      "task_id": "east-1",
+      "destination": "EC",
+      "paused": false
+    },
+    {
+      "tick": 9,
+      "robot_id": "r2",
+      "position": "P2",
+      "previous_position": "P1",
+      "action": "move",
+      "task_id": "east-2",
+      "destination": "ED",
+      "paused": false
+    },
+    {
+      "tick": 9,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "EA",
+      "action": "wait",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 9,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "EB",
+      "action": "wait",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 10,
+      "robot_id": "r1",
+      "position": "EC",
+      "previous_position": "E1",
+      "action": "complete",
+      "task_id": "east-1",
+      "destination": "EC",
+      "paused": false
+    },
+    {
+      "tick": 10,
+      "robot_id": "r2",
+      "position": "P3",
+      "previous_position": "P2",
+      "action": "move",
+      "task_id": "east-2",
+      "destination": "ED",
+      "paused": false
+    },
+    {
+      "tick": 10,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "EA",
+      "action": "wait",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 10,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "EB",
+      "action": "wait",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 11,
+      "robot_id": "r1",
+      "position": "EC",
+      "previous_position": "EC",
+      "action": "wait",
+      "task_id": "return-r1",
+      "destination": "WA",
+      "paused": false
+    },
+    {
+      "tick": 11,
+      "robot_id": "r2",
+      "position": "E1",
+      "previous_position": "P3",
+      "action": "move",
+      "task_id": "east-2",
+      "destination": "ED",
+      "paused": false
+    },
+    {
+      "tick": 11,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "EA",
+      "action": "wait",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 11,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "EB",
+      "action": "wait",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 12,
+      "robot_id": "r1",
+      "position": "EC",
+      "previous_position": "EC",
+      "action": "wait",
+      "task_id": "return-r1",
+      "destination": "WA",
+      "paused": false
+    },
+    {
+      "tick": 12,
+      "robot_id": "r2",
+      "position": "ED",
+      "previous_position": "E1",
+      "action": "complete",
+      "task_id": "east-2",
+      "destination": "ED",
+      "paused": false
+    },
+    {
+      "tick": 12,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "EA",
+      "action": "wait",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 12,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "EB",
+      "action": "wait",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 13,
+      "robot_id": "r1",
+      "position": "EC",
+      "previous_position": "EC",
+      "action": "wait",
+      "task_id": "return-r1",
+      "destination": "WA",
+      "paused": false
+    },
+    {
+      "tick": 13,
+      "robot_id": "r2",
+      "position": "ED",
+      "previous_position": "ED",
+      "action": "wait",
+      "task_id": "return-r2",
+      "destination": "WB",
+      "paused": false
+    },
+    {
+      "tick": 13,
+      "robot_id": "r3",
+      "position": "E1",
+      "previous_position": "EA",
+      "action": "move",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 13,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "EB",
+      "action": "wait",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 14,
+      "robot_id": "r1",
+      "position": "EC",
+      "previous_position": "EC",
+      "action": "wait",
+      "task_id": "return-r1",
+      "destination": "WA",
+      "paused": false
+    },
+    {
+      "tick": 14,
+      "robot_id": "r2",
+      "position": "ED",
+      "previous_position": "ED",
+      "action": "wait",
+      "task_id": "return-r2",
+      "destination": "WB",
+      "paused": false
+    },
+    {
+      "tick": 14,
+      "robot_id": "r3",
+      "position": "P3",
+      "previous_position": "E1",
+      "action": "move",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 14,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "EB",
+      "action": "wait",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 15,
+      "robot_id": "r1",
+      "position": "EC",
+      "previous_position": "EC",
+      "action": "wait",
+      "task_id": "return-r1",
+      "destination": "WA",
+      "paused": false
+    },
+    {
+      "tick": 15,
+      "robot_id": "r2",
+      "position": "ED",
+      "previous_position": "ED",
+      "action": "wait",
+      "task_id": "return-r2",
+      "destination": "WB",
+      "paused": false
+    },
+    {
+      "tick": 15,
+      "robot_id": "r3",
+      "position": "P2",
+      "previous_position": "P3",
+      "action": "move",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 15,
+      "robot_id": "r4",
+      "position": "E1",
+      "previous_position": "EB",
+      "action": "move",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 16,
+      "robot_id": "r1",
+      "position": "EC",
+      "previous_position": "EC",
+      "action": "wait",
+      "task_id": "return-r1",
+      "destination": "WA",
+      "paused": false
+    },
+    {
+      "tick": 16,
+      "robot_id": "r2",
+      "position": "ED",
+      "previous_position": "ED",
+      "action": "wait",
+      "task_id": "return-r2",
+      "destination": "WB",
+      "paused": false
+    },
+    {
+      "tick": 16,
+      "robot_id": "r3",
+      "position": "P1",
+      "previous_position": "P2",
+      "action": "move",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 16,
+      "robot_id": "r4",
+      "position": "P3",
+      "previous_position": "E1",
+      "action": "move",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 17,
+      "robot_id": "r1",
+      "position": "E1",
+      "previous_position": "EC",
+      "action": "move",
+      "task_id": "return-r1",
+      "destination": "WA",
+      "paused": false
+    },
+    {
+      "tick": 17,
+      "robot_id": "r2",
+      "position": "ED",
+      "previous_position": "ED",
+      "action": "wait",
+      "task_id": "return-r2",
+      "destination": "WB",
+      "paused": false
+    },
+    {
+      "tick": 17,
+      "robot_id": "r3",
+      "position": "P0",
+      "previous_position": "P1",
+      "action": "move",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 17,
+      "robot_id": "r4",
+      "position": "P2",
+      "previous_position": "P3",
+      "action": "move",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 18,
+      "robot_id": "r1",
+      "position": "P3",
+      "previous_position": "E1",
+      "action": "move",
+      "task_id": "return-r1",
+      "destination": "WA",
+      "paused": false
+    },
+    {
+      "tick": 18,
+      "robot_id": "r2",
+      "position": "ED",
+      "previous_position": "ED",
+      "action": "wait",
+      "task_id": "return-r2",
+      "destination": "WB",
+      "paused": false
+    },
+    {
+      "tick": 18,
+      "robot_id": "r3",
+      "position": "W1",
+      "previous_position": "P0",
+      "action": "move",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 18,
+      "robot_id": "r4",
+      "position": "P1",
+      "previous_position": "P2",
+      "action": "move",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 19,
+      "robot_id": "r1",
+      "position": "P2",
+      "previous_position": "P3",
+      "action": "move",
+      "task_id": "return-r1",
+      "destination": "WA",
+      "paused": false
+    },
+    {
+      "tick": 19,
+      "robot_id": "r2",
+      "position": "E1",
+      "previous_position": "ED",
+      "action": "move",
+      "task_id": "return-r2",
+      "destination": "WB",
+      "paused": false
+    },
+    {
+      "tick": 19,
+      "robot_id": "r3",
+      "position": "WC",
+      "previous_position": "W1",
+      "action": "complete",
+      "task_id": "west-1",
+      "destination": "WC",
+      "paused": false
+    },
+    {
+      "tick": 19,
+      "robot_id": "r4",
+      "position": "P0",
+      "previous_position": "P1",
+      "action": "move",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 20,
+      "robot_id": "r1",
+      "position": "P1",
+      "previous_position": "P2",
+      "action": "move",
+      "task_id": "return-r1",
+      "destination": "WA",
+      "paused": false
+    },
+    {
+      "tick": 20,
+      "robot_id": "r2",
+      "position": "P3",
+      "previous_position": "E1",
+      "action": "move",
+      "task_id": "return-r2",
+      "destination": "WB",
+      "paused": false
+    },
+    {
+      "tick": 20,
+      "robot_id": "r3",
+      "position": "WC",
+      "previous_position": "WC",
+      "action": "wait",
+      "task_id": "return-r3",
+      "destination": "EA",
+      "paused": false
+    },
+    {
+      "tick": 20,
+      "robot_id": "r4",
+      "position": "W1",
+      "previous_position": "P0",
+      "action": "move",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 21,
+      "robot_id": "r1",
+      "position": "P0",
+      "previous_position": "P1",
+      "action": "move",
+      "task_id": "return-r1",
+      "destination": "WA",
+      "paused": false
+    },
+    {
+      "tick": 21,
+      "robot_id": "r2",
+      "position": "P2",
+      "previous_position": "P3",
+      "action": "move",
+      "task_id": "return-r2",
+      "destination": "WB",
+      "paused": false
+    },
+    {
+      "tick": 21,
+      "robot_id": "r3",
+      "position": "WC",
+      "previous_position": "WC",
+      "action": "wait",
+      "task_id": "return-r3",
+      "destination": "EA",
+      "paused": false
+    },
+    {
+      "tick": 21,
+      "robot_id": "r4",
+      "position": "WD",
+      "previous_position": "W1",
+      "action": "complete",
+      "task_id": "west-2",
+      "destination": "WD",
+      "paused": false
+    },
+    {
+      "tick": 22,
+      "robot_id": "r1",
+      "position": "W1",
+      "previous_position": "P0",
+      "action": "move",
+      "task_id": "return-r1",
+      "destination": "WA",
+      "paused": false
+    },
+    {
+      "tick": 22,
+      "robot_id": "r2",
+      "position": "P1",
+      "previous_position": "P2",
+      "action": "move",
+      "task_id": "return-r2",
+      "destination": "WB",
+      "paused": false
+    },
+    {
+      "tick": 22,
+      "robot_id": "r3",
+      "position": "WC",
+      "previous_position": "WC",
+      "action": "wait",
+      "task_id": "return-r3",
+      "destination": "EA",
+      "paused": false
+    },
+    {
+      "tick": 22,
+      "robot_id": "r4",
+      "position": "WD",
+      "previous_position": "WD",
+      "action": "wait",
+      "task_id": "return-r4",
+      "destination": "EB",
+      "paused": false
+    },
+    {
+      "tick": 23,
+      "robot_id": "r1",
+      "position": "WA",
+      "previous_position": "W1",
+      "action": "complete",
+      "task_id": "return-r1",
+      "destination": "WA",
+      "paused": false
+    },
+    {
+      "tick": 23,
+      "robot_id": "r2",
+      "position": "P0",
+      "previous_position": "P1",
+      "action": "move",
+      "task_id": "return-r2",
+      "destination": "WB",
+      "paused": false
+    },
+    {
+      "tick": 23,
+      "robot_id": "r3",
+      "position": "WC",
+      "previous_position": "WC",
+      "action": "wait",
+      "task_id": "return-r3",
+      "destination": "EA",
+      "paused": false
+    },
+    {
+      "tick": 23,
+      "robot_id": "r4",
+      "position": "WD",
+      "previous_position": "WD",
+      "action": "wait",
+      "task_id": "return-r4",
+      "destination": "EB",
+      "paused": false
+    },
+    {
+      "tick": 24,
+      "robot_id": "r1",
+      "position": "WA",
+      "previous_position": "WA",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 24,
+      "robot_id": "r2",
+      "position": "W1",
+      "previous_position": "P0",
+      "action": "move",
+      "task_id": "return-r2",
+      "destination": "WB",
+      "paused": false
+    },
+    {
+      "tick": 24,
+      "robot_id": "r3",
+      "position": "WC",
+      "previous_position": "WC",
+      "action": "wait",
+      "task_id": "return-r3",
+      "destination": "EA",
+      "paused": false
+    },
+    {
+      "tick": 24,
+      "robot_id": "r4",
+      "position": "WD",
+      "previous_position": "WD",
+      "action": "wait",
+      "task_id": "return-r4",
+      "destination": "EB",
+      "paused": false
+    },
+    {
+      "tick": 25,
+      "robot_id": "r1",
+      "position": "WA",
+      "previous_position": "WA",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 25,
+      "robot_id": "r2",
+      "position": "WB",
+      "previous_position": "W1",
+      "action": "complete",
+      "task_id": "return-r2",
+      "destination": "WB",
+      "paused": false
+    },
+    {
+      "tick": 25,
+      "robot_id": "r3",
+      "position": "WC",
+      "previous_position": "WC",
+      "action": "wait",
+      "task_id": "return-r3",
+      "destination": "EA",
+      "paused": false
+    },
+    {
+      "tick": 25,
+      "robot_id": "r4",
+      "position": "WD",
+      "previous_position": "WD",
+      "action": "wait",
+      "task_id": "return-r4",
+      "destination": "EB",
+      "paused": false
+    },
+    {
+      "tick": 26,
+      "robot_id": "r1",
+      "position": "WA",
+      "previous_position": "WA",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 26,
+      "robot_id": "r2",
+      "position": "WB",
+      "previous_position": "WB",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 26,
+      "robot_id": "r3",
+      "position": "W1",
+      "previous_position": "WC",
+      "action": "move",
+      "task_id": "return-r3",
+      "destination": "EA",
+      "paused": false
+    },
+    {
+      "tick": 26,
+      "robot_id": "r4",
+      "position": "WD",
+      "previous_position": "WD",
+      "action": "wait",
+      "task_id": "return-r4",
+      "destination": "EB",
+      "paused": false
+    },
+    {
+      "tick": 27,
+      "robot_id": "r1",
+      "position": "WA",
+      "previous_position": "WA",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 27,
+      "robot_id": "r2",
+      "position": "WB",
+      "previous_position": "WB",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 27,
+      "robot_id": "r3",
+      "position": "P0",
+      "previous_position": "W1",
+      "action": "move",
+      "task_id": "return-r3",
+      "destination": "EA",
+      "paused": false
+    },
+    {
+      "tick": 27,
+      "robot_id": "r4",
+      "position": "WD",
+      "previous_position": "WD",
+      "action": "wait",
+      "task_id": "return-r4",
+      "destination": "EB",
+      "paused": false
+    },
+    {
+      "tick": 28,
+      "robot_id": "r1",
+      "position": "WA",
+      "previous_position": "WA",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 28,
+      "robot_id": "r2",
+      "position": "WB",
+      "previous_position": "WB",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 28,
+      "robot_id": "r3",
+      "position": "P1",
+      "previous_position": "P0",
+      "action": "move",
+      "task_id": "return-r3",
+      "destination": "EA",
+      "paused": false
+    },
+    {
+      "tick": 28,
+      "robot_id": "r4",
+      "position": "W1",
+      "previous_position": "WD",
+      "action": "move",
+      "task_id": "return-r4",
+      "destination": "EB",
+      "paused": false
+    },
+    {
+      "tick": 29,
+      "robot_id": "r1",
+      "position": "WA",
+      "previous_position": "WA",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 29,
+      "robot_id": "r2",
+      "position": "WB",
+      "previous_position": "WB",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 29,
+      "robot_id": "r3",
+      "position": "P2",
+      "previous_position": "P1",
+      "action": "move",
+      "task_id": "return-r3",
+      "destination": "EA",
+      "paused": false
+    },
+    {
+      "tick": 29,
+      "robot_id": "r4",
+      "position": "P0",
+      "previous_position": "W1",
+      "action": "move",
+      "task_id": "return-r4",
+      "destination": "EB",
+      "paused": false
+    },
+    {
+      "tick": 30,
+      "robot_id": "r1",
+      "position": "WA",
+      "previous_position": "WA",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 30,
+      "robot_id": "r2",
+      "position": "WB",
+      "previous_position": "WB",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 30,
+      "robot_id": "r3",
+      "position": "P3",
+      "previous_position": "P2",
+      "action": "move",
+      "task_id": "return-r3",
+      "destination": "EA",
+      "paused": false
+    },
+    {
+      "tick": 30,
+      "robot_id": "r4",
+      "position": "P1",
+      "previous_position": "P0",
+      "action": "move",
+      "task_id": "return-r4",
+      "destination": "EB",
+      "paused": false
+    },
+    {
+      "tick": 31,
+      "robot_id": "r1",
+      "position": "WA",
+      "previous_position": "WA",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 31,
+      "robot_id": "r2",
+      "position": "WB",
+      "previous_position": "WB",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 31,
+      "robot_id": "r3",
+      "position": "E1",
+      "previous_position": "P3",
+      "action": "move",
+      "task_id": "return-r3",
+      "destination": "EA",
+      "paused": false
+    },
+    {
+      "tick": 31,
+      "robot_id": "r4",
+      "position": "P2",
+      "previous_position": "P1",
+      "action": "move",
+      "task_id": "return-r4",
+      "destination": "EB",
+      "paused": false
+    },
+    {
+      "tick": 32,
+      "robot_id": "r1",
+      "position": "WA",
+      "previous_position": "WA",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 32,
+      "robot_id": "r2",
+      "position": "WB",
+      "previous_position": "WB",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 32,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "E1",
+      "action": "complete",
+      "task_id": "return-r3",
+      "destination": "EA",
+      "paused": false
+    },
+    {
+      "tick": 32,
+      "robot_id": "r4",
+      "position": "P3",
+      "previous_position": "P2",
+      "action": "move",
+      "task_id": "return-r4",
+      "destination": "EB",
+      "paused": false
+    },
+    {
+      "tick": 33,
+      "robot_id": "r1",
+      "position": "WA",
+      "previous_position": "WA",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 33,
+      "robot_id": "r2",
+      "position": "WB",
+      "previous_position": "WB",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 33,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "EA",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 33,
+      "robot_id": "r4",
+      "position": "E1",
+      "previous_position": "P3",
+      "action": "move",
+      "task_id": "return-r4",
+      "destination": "EB",
+      "paused": false
+    },
+    {
+      "tick": 34,
+      "robot_id": "r1",
+      "position": "WA",
+      "previous_position": "WA",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 34,
+      "robot_id": "r2",
+      "position": "WB",
+      "previous_position": "WB",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 34,
+      "robot_id": "r3",
+      "position": "EA",
+      "previous_position": "EA",
+      "action": "idle",
+      "task_id": null,
+      "destination": null,
+      "paused": false
+    },
+    {
+      "tick": 34,
+      "robot_id": "r4",
+      "position": "EB",
+      "previous_position": "E1",
+      "action": "complete",
+      "task_id": "return-r4",
+      "destination": "EB",
+      "paused": false
+    }
+  ]
+}
