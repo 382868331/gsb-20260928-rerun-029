@@ -11,7 +11,9 @@ from .gridmap import Cell
 class RobotStatus(Enum):
     IDLE = "idle"
     MOVING = "moving"
+    WAITING = "waiting"
     PAUSED = "paused"
+    FAILED = "failed"
     DONE = "done"
 
 
@@ -20,6 +22,9 @@ class Task:
     task_id: str
     goal: Cell
     assigned_tick: int = 0
+    priority: int = 0
+    deadline: int | None = None
+    on_time: bool | None = None
 
 
 @dataclass
@@ -30,6 +35,7 @@ class Robot:
     task: Task | None = None
     path: list[Cell] = field(default_factory=list)  # path[t] 为相对计划起点的占用格
     plan_start: int = 0
+    last_blockers: list[str] = field(default_factory=list)
     wait_ticks: int = 0
     total_wait: int = 0
 

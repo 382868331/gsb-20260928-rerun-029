@@ -6,10 +6,17 @@ Cell = tuple[int, int]
 
 
 class GridMap:
-    def __init__(self, width: int, height: int, obstacles: set[Cell] | None = None):
+    def __init__(
+        self,
+        width: int,
+        height: int,
+        obstacles: set[Cell] | None = None,
+        closed_cells: set[Cell] | None = None,
+    ):
         self.width = width
         self.height = height
         self.obstacles: set[Cell] = set(obstacles or ())
+        self.closed_cells: set[Cell] = set(closed_cells or ())
 
     @classmethod
     def corridor_map(cls, length: int = 8, width: int = 3) -> "GridMap":
@@ -27,7 +34,16 @@ class GridMap:
         return 0 <= x < self.width and 0 <= y < self.height
 
     def passable(self, cell: Cell) -> bool:
-        return self.in_bounds(cell) and cell not in self.obstacles
+        return self.in_bounds(cell) and cell not in self.obstacles and cell not in self.closed_cells
+
+    def close_cells(self, cells: set[Cell] | list[Cell]) -> None:
+        for cell in cells:
+            if self.in_bounds(cell) and cell not in self.obstacles:
+                self.closed_cells.add(cell)
+
+    def open_cells(self, cells: set[Cell] | list[Cell]) -> None:
+        for cell in cells:
+            self.closed_cells.discard(cell)
 
     def neighbors(self, cell: Cell) -> list[Cell]:
         x, y = cell
