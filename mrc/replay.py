@@ -16,6 +16,10 @@ class ReplayReport:
     unfinished: list[str] = field(default_factory=list)
     starved: list[str] = field(default_factory=list)
     blocked_reasons: dict[str, list[str]] = field(default_factory=dict)
+    wait_classifications: dict[str, list[str]] = field(default_factory=dict)
+    terminated: list[str] = field(default_factory=list)
+    reactivations: list[str] = field(default_factory=list)
+    dispositions: list[str] = field(default_factory=list)
     ticks: int = 0
 
     @property
@@ -24,7 +28,11 @@ class ReplayReport:
             self.collisions
             or self.edge_swaps
             or self.closed_violations
-            or self.unfinished
+            or [u for u in self.unfinished if not any(u in item for item in self.terminated)]
+            or [
+                item for item in self.reactivations
+                if "试图重新激活" in item
+            ]
         )
 
     def summary(self) -> str:
@@ -34,9 +42,19 @@ class ReplayReport:
             f"闯封闭区: {len(self.closed_violations)}  超时: {len(self.deadline_misses)}"
         )
         lines.append(f"未完成: {self.unfinished or '无'}  饥饿风险: {self.starved or '无'}")
+        if self.terminated:
+            lines.append(f"已终止: {self.terminated}")
+        if self.reactivations:
+            lines.append(f"违规再激活: {self.reactivations}")
         if self.blocked_reasons:
             reasons = "; ".join(f"{rid}: {','.join(reasons)}" for rid, reasons in self.blocked_reasons.items())
             lines.append(f"阻塞原因: {reasons}")
+        if self.wait_classifications:
+            classes = "; ".join(
+                f"{rid}: {','.join(reasons)}"
+                for rid, reasons in self.wait_classifications.items()
+            )
+            lines.append(f"等待分类: {classes}")
         lines.append("结论: " + ("通过" if self.ok else "未通过"))
         return "\n".join(lines)
 
@@ -51,12 +69,38 @@ def replay(log_path: str | Path, starvation_limit: int = 30) -> ReplayReport:
     closed: set[tuple[int, int]] = set()
     closures: list[set[tuple[int, int]]] = []
     exiting_allowed: set[str] = set()
+    terminated_ids: dict[str, str] = {}
 
     for line in Path(log_path).read_text().splitlines():
         rec = json.loads(line)
         ev = rec["event"]
         if ev == "assign":
             assigned.add(rec["robot"])
+            if rec["robot"] in terminated_ids:
+                report.reactivations.append(
+                    f"tick {rec['tick']}: {rec['robot']} 任务 {rec['task']} "
+                    f"试图重新激活已终止任务({terminated_ids[rec['robot']]})"
+                )
+        elif ev == "reject_reactivation":
+            report.reactivations.append(
+                f"tick {rec['tick']}: {rec['robot']} 任务 {rec['task']} "
+                f"再分配被拒绝({rec.get('prior_reason')})"
+            )
+        elif ev == "terminated":
+            terminated_ids[rec["robot"]] = rec.get("end_reason", "terminated")
+            report.terminated.append(
+                f"{rec['robot']} 任务 {rec.get('task')} 终止于 tick {rec['tick']}: "
+                f"{rec.get('end_reason')}"
+            )
+        elif ev == "disposition":
+            report.dispositions.append(
+                f"tick {rec['tick']} {rec['robot']}({rec.get('task')}): "
+                f"{rec['decision']}/{rec['reason']}"
+            )
+            reason = rec.get("reason")
+            if reason in ("blocked", "deadline_infeasible", "search_limit",
+                          "exit_blocked", "await_reopen"):
+                report.wait_classifications.setdefault(rec["robot"], []).append(reason)
         elif ev == "done":
             done.add(rec["robot"])
             if rec.get("on_time") is False:
@@ -129,7 +173,7 @@ def replay(log_path: str | Path, starvation_limit: int = 30) -> ReplayReport:
                     wait_run[rid] = 0
             prev = pos
 
-    report.unfinished = sorted(assigned - done)
+    report.unfinished = sorted(assigned - done - set(terminated_ids))
     for rid, reasons in list(report.blocked_reasons.items()):
         unique: list[str] = []
         for reason in reasons:

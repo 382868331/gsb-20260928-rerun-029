@@ -14,6 +14,10 @@ class ReservationTable:
         self.goal: dict[Cell, str] = {}
         self.goal_ready: dict[Cell, int] = {}
         self.holds: dict[Cell, str] = {}
+        # 永久占位:任务完成/终止的机器人不会再让出该格
+        self.permanent_holds: dict[Cell, str] = {}
+        # 持续占位:暂停中的机器人恢复前一直占用
+        self.sticky_holds: dict[Cell, str] = {}
 
     def is_free(
         self,
@@ -21,13 +25,18 @@ class ReservationTable:
         t: int,
         from_cell: Cell | None = None,
         owner: str | None = None,
+        ignore_holds: bool = False,
     ) -> bool:
         if self.vertex.get((cell, t)) not in (None, owner):
             return False
         goal_owner = self.goal.get(cell)
         if goal_owner not in (None, owner) and self.goal_ready.get(cell, 0) <= t:
             return False
-        if self.holds.get(cell) not in (None, owner):
+        hold_owner = self.holds.get(cell)
+        sticky_owner = self.sticky_holds.get(cell)
+        if not ignore_holds and hold_owner not in (None, owner):
+            return False
+        if sticky_owner not in (None, owner):
             return False
         if from_cell is not None and self.edge.get((cell, from_cell, t)) not in (None, owner):
             return False
@@ -39,13 +48,14 @@ class ReservationTable:
         t: int,
         from_cell: Cell | None = None,
         owner: str | None = None,
+        permanent_only: bool = False,
     ) -> list[str]:
         out: set[str] = set()
         vertex_owner = self.vertex.get((cell, t))
         goal_owner = self.goal.get(cell)
         if goal_owner is not None and goal_owner != owner and self.goal_ready.get(cell, 0) <= t:
             out.add(goal_owner)
-        hold_owner = self.holds.get(cell)
+        hold_owner = (self.permanent_holds if permanent_only else self.holds).get(cell)
         edge_owner = None if from_cell is None else self.edge.get((cell, from_cell, t))
         for blocker in (vertex_owner, hold_owner, edge_owner):
             if blocker is not None and blocker != owner:
@@ -69,11 +79,24 @@ class ReservationTable:
             ready = start + len(path) - 1 if goal_ready is None else goal_ready
             self.goal_ready[path[-1]] = max(ready, start + 1)
 
-    def reserve_hold(self, robot_id: str, cell: Cell) -> None:
+    def reserve_hold(
+        self, robot_id: str, cell: Cell,
+        permanent: bool = False, sticky: bool = False,
+    ) -> None:
         self.holds[cell] = robot_id
+        if permanent:
+            self.permanent_holds[cell] = robot_id
+        if sticky:
+            self.sticky_holds[cell] = robot_id
 
     def release_hold(self, robot_id: str) -> None:
         self.holds = {cell: owner for cell, owner in self.holds.items() if owner != robot_id}
+        self.permanent_holds = {
+            cell: owner for cell, owner in self.permanent_holds.items() if owner != robot_id
+        }
+        self.sticky_holds = {
+            cell: owner for cell, owner in self.sticky_holds.items() if owner != robot_id
+        }
 
     def release(self, robot_id: str) -> None:
         self.vertex = {k: v for k, v in self.vertex.items() if v != robot_id}

@@ -1,12 +1,14 @@
 """平台基础测试."""
 
+import json
+
 from mrc.coordinator import Coordinator, CoordinationError
 from mrc.executor import Executor
 from mrc.gridmap import GridMap
 from mrc.planner import plan_path
 from mrc.replay import replay
 from mrc.reservation import ReservationTable
-from mrc.robot import Robot, RobotStatus, Task
+from mrc.robot import Robot, RobotStatus, Task, WaitReason
 
 
 def make(tmp_path, n_robots=2):
@@ -176,3 +178,95 @@ def test_infeasible_deadline_is_distinguished_from_search_pending(tmp_path):
         assert "尚未找到" in str(exc)
     else:
         raise AssertionError("deadline 内应报告尚未找到方案")
+
+
+def test_permanently_occupied_goal_terminates_with_clear_reason(tmp_path):
+    """目标被长期停放机器人占据:暂时受阻/无法按时/搜索预算三分类,过期即终止."""
+    gmap = GridMap(6, 3, {(x, y) for x in range(6) for y in (0, 2)})
+    robots = [Robot("R1", (0, 1)), Robot("R2", (5, 1))]
+    ex = Executor(Coordinator(gmap, horizon=80), robots, tmp_path / "run.log")
+    ex.assign({"R1": Task("T1", (4, 1))})  # R1 完成后永久停在 (4,1)
+    ex.run()
+    assert robots[0].status == RobotStatus.DONE
+    ex.assign({"R2": Task("T2", (4, 1), deadline=ex.tick + 3)})
+    assert robots[1].status in (RobotStatus.WAITING, RobotStatus.TERMINATED)
+    ex.run()
+    assert robots[1].status == RobotStatus.TERMINATED
+    assert robots[1].end_reason in ("hard_blocked", "deadline_infeasible")
+    assert robots[1].task.on_time is False
+    report = replay(ex.log_path)
+    assert report.terminated
+    assert any("T2" in item for item in report.terminated)
+    assert not report.collisions
+
+
+def test_temporary_dock_does_not_preempt_active_reservation(tmp_path):
+    """封闭通道撤离:允许临时停靠位,但不抢占正在执行的预约."""
+    gmap = GridMap.corridor_map(length=8, width=3)
+    robots = [Robot("R1", (4, 1)), Robot("R2", (8, 1))]
+    ex = Executor(Coordinator(gmap), robots, tmp_path / "run.log")
+    ex.assign({"R2": Task("T2", (0, 1))})
+    ex.step()  # R2 向通道移动,预约占住前方格子
+    r2_path = list(robots[1].path)
+    ex.add_staging_cells([(3, 1), (5, 1)])
+    ex.close_corridor([(x, 1) for x in range(3, 8)])
+    # R1 撤离安排不得占用 R2 已预约的格子
+    for cell in robots[0].path:
+        owner = ex.coordinator.reservations.vertex.get((cell, ex.tick))
+        assert owner in (None, "R1")
+    decision = ex.coordinator.last_dispositions.get("R1")
+    assert decision is not None and decision.decision in ("exit", "stage", "wait")
+    ex.run()
+    report = replay(ex.log_path)
+    assert not report.collisions and not report.edge_swaps and not report.closed_violations
+
+
+def test_emergency_closure_permanent_occupy_dispositions(tmp_path):
+    """紧急任务、永久占位与新封路同时出现:每个任务都有继续/退出/终止原因."""
+    gmap = GridMap.corridor_map(length=8, width=3)
+    robots = [Robot("R1", (3, 1)), Robot("R2", (11, 1)), Robot("R3", (9, 0))]
+    ex = Executor(Coordinator(gmap), robots, tmp_path / "run.log")
+    ex.assign({"R1": Task("T1", (11, 1))})
+    for _ in range(3):
+        ex.step()
+    # R3 永久停在 (9,0);R2 目标正好是永久占位;同时封闭通道并插入紧急任务
+    ex.close_corridor([(x, 1) for x in range(4, 9)])
+    ex.assign({
+        "R2": Task("EMG", (9, 0), priority=100, deadline=ex.tick + 4),
+    })
+    ex.run()
+    decisions = {}
+    for line in ex.log_path.read_text().splitlines():
+        rec = json.loads(line)
+        if rec.get("event") == "disposition":
+            decisions.setdefault(rec["robot"], []).append(
+                (rec["decision"], rec["reason"]),
+            )
+    assert any(d[0] == "exit" or d[0] == "stage" or ("wait", d[1]) for d in decisions.get("R1", []))
+    assert any(d[0] in ("terminate", "wait") for d in decisions.get("R2", []))
+    report = replay(ex.log_path)
+    assert not report.collisions and not report.closed_violations
+
+
+def test_resume_does_not_reactivate_terminated_task(tmp_path):
+    """重开调度记录后,已判不可行的任务不能被重新激活."""
+    gmap = GridMap(6, 3, {(x, y) for x in range(6) for y in (0, 2)})
+    robots = [Robot("R1", (0, 1)), Robot("R2", (5, 1))]
+    ex = Executor(Coordinator(gmap, horizon=80), robots, tmp_path / "run.log")
+    ex.assign({"R1": Task("T1", (4, 1))})
+    ex.run()
+    ex.assign({"R2": Task("T2", (4, 1), deadline=ex.tick + 2)})
+    ex.run()
+    assert robots[1].status == RobotStatus.TERMINATED
+    log_path = ex.log_path
+
+    gmap2 = GridMap(6, 3, {(x, y) for x in range(6) for y in (0, 2)})
+    robots2 = [Robot("R1", (0, 1)), Robot("R2", (5, 1))]
+    resumed = Executor.resume_from_log(gmap2, robots2, log_path)
+    assert robots2[1].status == RobotStatus.TERMINATED
+    assert "R2" in resumed.coordinator.terminated
+    resumed.assign({"R2": Task("T2-again", (3, 1), deadline=resumed.tick + 5)})
+    assert robots2[1].status == RobotStatus.TERMINATED
+    report = replay(log_path)
+    assert any("T2-again" in item for item in report.reactivations)
+    assert report.ok, report.summary()
