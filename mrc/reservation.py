@@ -14,6 +14,7 @@ class ReservationTable:
         self.goal: dict[Cell, str] = {}
         self.goal_ready: dict[Cell, int] = {}
         self.holds: dict[Cell, str] = {}
+        self.permanent: dict[Cell, str] = {}
 
     def is_free(
         self,
@@ -28,6 +29,8 @@ class ReservationTable:
         if goal_owner not in (None, owner) and self.goal_ready.get(cell, 0) <= t:
             return False
         if self.holds.get(cell) not in (None, owner):
+            return False
+        if self.permanent.get(cell) not in (None, owner):
             return False
         if from_cell is not None and self.edge.get((cell, from_cell, t)) not in (None, owner):
             return False
@@ -46,8 +49,9 @@ class ReservationTable:
         if goal_owner is not None and goal_owner != owner and self.goal_ready.get(cell, 0) <= t:
             out.add(goal_owner)
         hold_owner = self.holds.get(cell)
+        permanent_owner = self.permanent.get(cell)
         edge_owner = None if from_cell is None else self.edge.get((cell, from_cell, t))
-        for blocker in (vertex_owner, hold_owner, edge_owner):
+        for blocker in (vertex_owner, hold_owner, permanent_owner, edge_owner):
             if blocker is not None and blocker != owner:
                 out.add(blocker)
         return sorted(out)
@@ -72,8 +76,12 @@ class ReservationTable:
     def reserve_hold(self, robot_id: str, cell: Cell) -> None:
         self.holds[cell] = robot_id
 
+    def reserve_permanent(self, robot_id: str, cell: Cell) -> None:
+        self.permanent[cell] = robot_id
+
     def release_hold(self, robot_id: str) -> None:
         self.holds = {cell: owner for cell, owner in self.holds.items() if owner != robot_id}
+        self.permanent = {cell: owner for cell, owner in self.permanent.items() if owner != robot_id}
 
     def release(self, robot_id: str) -> None:
         self.vertex = {k: v for k, v in self.vertex.items() if v != robot_id}
@@ -81,3 +89,4 @@ class ReservationTable:
         self.goal = {k: v for k, v in self.goal.items() if v != robot_id}
         self.goal_ready = {k: v for k, v in self.goal_ready.items() if k in self.goal}
         self.release_hold(robot_id)
+        self.permanent = {cell: owner for cell, owner in self.permanent.items() if owner != robot_id}

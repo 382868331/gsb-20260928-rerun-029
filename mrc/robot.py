@@ -12,6 +12,8 @@ class RobotStatus(Enum):
     IDLE = "idle"
     MOVING = "moving"
     WAITING = "waiting"
+    EXITING = "exiting"
+    SEARCH_LIMIT = "search_limit"
     PAUSED = "paused"
     FAILED = "failed"
     DONE = "done"
@@ -25,6 +27,7 @@ class Task:
     priority: int = 0
     deadline: int | None = None
     on_time: bool | None = None
+    terminal_reason: str | None = None
 
 
 @dataclass
@@ -36,6 +39,7 @@ class Robot:
     path: list[Cell] = field(default_factory=list)  # path[t] 为相对计划起点的占用格
     plan_start: int = 0
     last_blockers: list[str] = field(default_factory=list)
+    last_reason: str | None = None
     wait_ticks: int = 0
     total_wait: int = 0
 

@@ -16,6 +16,8 @@ class ReplayReport:
     unfinished: list[str] = field(default_factory=list)
     starved: list[str] = field(default_factory=list)
     blocked_reasons: dict[str, list[str]] = field(default_factory=dict)
+    terminated: list[str] = field(default_factory=list)
+    decision_reasons: dict[str, list[str]] = field(default_factory=dict)
     ticks: int = 0
 
     @property
@@ -47,6 +49,7 @@ def replay(log_path: str | Path, starvation_limit: int = 30) -> ReplayReport:
     wait_run: dict[str, int] = {}
     done: set[str] = set()
     assigned: set[str] = set()
+    terminated: set[str] = set()
     paused: set[str] = set()
     closed: set[tuple[int, int]] = set()
     closures: list[set[tuple[int, int]]] = []
@@ -69,6 +72,19 @@ def replay(log_path: str | Path, starvation_limit: int = 30) -> ReplayReport:
             )
             if rec.get("blockers"):
                 report.blocked_reasons.setdefault(rec["robot"], []).extend(rec["blockers"])
+        elif ev == "task_terminated":
+            terminated.add(rec["robot"])
+            reason = f"{rec['task']}={rec.get('reason', 'infeasible')}"
+            report.terminated.append(f"{rec['robot']} {reason}: {','.join(rec.get('blockers') or [])}")
+            report.blocked_reasons.setdefault(rec["robot"], []).append(reason)
+            if rec.get("reason") == "deadline_infeasible":
+                report.deadline_misses.append(
+                    f"{rec['robot']} 任务 {rec['task']} 在 tick {rec['tick']} 已无法满足截止时间"
+                )
+        elif ev == "task_decision" and rec.get("reason"):
+            report.decision_reasons.setdefault(rec["robot"], []).append(
+                f"{rec.get('action')}:{rec['reason']}"
+            )
         elif ev == "pause":
             paused.add(rec["robot"])
         elif ev == "resume":
@@ -129,7 +145,7 @@ def replay(log_path: str | Path, starvation_limit: int = 30) -> ReplayReport:
                     wait_run[rid] = 0
             prev = pos
 
-    report.unfinished = sorted(assigned - done)
+    report.unfinished = sorted(assigned - done - terminated)
     for rid, reasons in list(report.blocked_reasons.items()):
         unique: list[str] = []
         for reason in reasons:

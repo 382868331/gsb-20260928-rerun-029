@@ -168,11 +168,66 @@ def test_infeasible_deadline_is_distinguished_from_search_pending(tmp_path):
     for _ in range(2):
         ex.step()
     ex.assign({"R2": Task("T2", (0, 1), deadline=ex.tick + 2)})
+    assert robots[1].status == RobotStatus.FAILED
+    assert robots[1].last_reason == "deadline_infeasible"
+    assert "R1" in robots[1].last_blockers
+    ex.coordinator.plan_all(robots, ex.tick, strict=True)
+    assert robots[1].status == RobotStatus.FAILED
+    assert robots[1].last_reason == "deadline_infeasible"
+
+
+def test_permanent_goal_terminates_and_remains_infeasible(tmp_path):
+    gmap = GridMap(6, 1)
+    robots = [Robot("R1", (5, 0)), Robot("R2", (0, 0))]
+    ex = Executor(Coordinator(gmap), robots, tmp_path / "run.log")
+    ex.assign({"R1": Task("DONE", (5, 0))})
+    ex.step()
+    assert robots[0].status == RobotStatus.DONE
+    ex.assign({"R2": Task("BLOCKED", (5, 0))})
+    assert robots[1].status == RobotStatus.FAILED
+    assert robots[1].task.terminal_reason == "infeasible"
+    assert "R1" in robots[1].last_blockers
+    ex.coordinator.plan_all(robots, ex.tick + 3, strict=False)
+    assert robots[1].status == RobotStatus.FAILED
+    assert robots[1].task.terminal_reason == "infeasible"
+    report = replay(ex.log_path)
+    assert not report.unfinished
+    assert any("BLOCKED=infeasible" in item for item in report.terminated)
+
+    reopened = Coordinator(gmap)
+    reopened.load_terminal_decisions(ex.log_path)
+    reopened.plan_all(robots, ex.tick + 5, strict=False)
+    assert robots[1].status == RobotStatus.FAILED
+    assert robots[1].task.terminal_reason == "infeasible"
+
+
+def test_search_budget_status_is_distinct_from_temporary_block(tmp_path):
+    gmap = GridMap(6, 3, {(x, y) for x in range(6) for y in (0, 2)})
+    robots = [Robot("R1", (0, 1)), Robot("R2", (5, 1))]
+    ex = Executor(Coordinator(gmap, horizon=80), robots, tmp_path / "run.log")
+    ex.assign({"R1": Task("T1", (4, 1))})
+    for _ in range(2):
+        ex.step()
+    ex.assign({"R2": Task("T2", (0, 1))})
     assert robots[1].status == RobotStatus.WAITING
-    assert robots[1].last_blockers and robots[1].last_blockers != ["search_limit"]
-    try:
-        ex.coordinator.plan_all(robots, ex.tick, strict=True)
-    except CoordinationError as exc:
-        assert "尚未找到" in str(exc)
-    else:
-        raise AssertionError("deadline 内应报告尚未找到方案")
+    assert robots[1].last_reason == "search_limit"
+    assert "R1" in robots[1].last_blockers
+
+
+def test_emergency_permanent_goal_and_closure_get_distinct_decisions(tmp_path):
+    gmap = GridMap.corridor_map(length=8, width=3)
+    robots = [Robot("R1", (0, 1)), Robot("R2", (11, 1)), Robot("R3", (1, 0))]
+    ex = Executor(Coordinator(gmap), robots, tmp_path / "run.log")
+    ex.assign({"R1": Task("T1", (11, 1)), "R2": Task("PARK", (11, 1))})
+    for _ in range(5):
+        ex.step()
+    ex.close_corridor([(x, 1) for x in range(3, 8)])
+    ex.assign({"R3": Task("EMG", (11, 0), priority=100, deadline=20)})
+    ex.run(20)
+    text = ex.log_path.read_text()
+    assert '"action": "exit"' in text
+    assert '"action": "continue"' in text
+    assert '"action": "terminate"' in text
+    assert robots[1].status == RobotStatus.DONE
+    report = replay(ex.log_path)
+    assert not report.collisions and not report.edge_swaps and not report.closed_violations

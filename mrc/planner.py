@@ -11,6 +11,7 @@ from .reservation import ReservationTable
 
 INFEASIBLE = "infeasible"
 SEARCH_LIMIT = "search_limit"
+DEADLINE_INFEASIBLE = "deadline_infeasible"
 
 
 def _heuristic(a: Cell, b: Cell) -> int:
@@ -45,6 +46,9 @@ def plan_path_result(
     goal_ok = gmap.passable(goal) or goal in allowed_closed
     if not start_ok or not goal_ok:
         return PlanResult(INFEASIBLE, blockers={"closed"} if not gmap.passable(goal) else set())
+    permanent_owner = reservations.permanent.get(goal)
+    if permanent_owner is not None and permanent_owner != robot_id:
+        return PlanResult(INFEASIBLE, blockers={permanent_owner, "permanent_goal"})
 
     deadline_remaining = None if deadline_tick is None else max(0, deadline_tick - start_tick)
     limit = min(horizon, deadline_remaining if deadline_remaining is not None else horizon)
@@ -97,8 +101,10 @@ def plan_path_result(
                     (next_g + _heuristic(nxt, goal), nt, nxt),
                 )
 
-    static_start = set(reservations.blockers(start, start_tick, owner=robot_id))
-    static_goal = set(reservations.blockers(goal, start_tick, owner=robot_id))
+    permanent_start = reservations.permanent.get(start)
+    permanent_goal = reservations.permanent.get(goal)
+    static_start = {permanent_start} if permanent_start not in (None, robot_id) else set()
+    static_goal = {permanent_goal} if permanent_goal not in (None, robot_id) else set()
     timed_owners = _timed_reservation_owners(
         gmap, reservations, start, start_tick, limit, robot_id,
     )
@@ -110,8 +116,45 @@ def plan_path_result(
         blockers.update(static_goal)
         blockers.update(timed_owners)
         return PlanResult(INFEASIBLE, blockers=blockers)
+    if deadline_tick is not None:
+        static_distance = _static_distance(gmap, start, goal, allowed_closed)
+        if static_distance is not None and static_distance > max(0, deadline_tick - start_tick):
+            blockers.update(timed_owners)
+            return PlanResult(DEADLINE_INFEASIBLE, blockers=blockers or {DEADLINE_INFEASIBLE})
     blockers.update(timed_owners)
     return PlanResult(SEARCH_LIMIT, blockers=blockers)
+
+
+def _static_distance(
+    gmap: GridMap,
+    start: Cell,
+    goal: Cell,
+    allowed_closed: set[Cell] | None = None,
+) -> int | None:
+    allowed_closed = allowed_closed or set()
+    pending = [(start, 0)]
+    seen = {start}
+    while pending:
+        cell, distance = pending.pop(0)
+        if cell == goal:
+            return distance
+        neighbors = list(gmap.neighbors(cell))
+        if cell in allowed_closed:
+            x, y = cell
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nxt_closed = (x + dx, y + dy)
+                if (
+                    gmap.in_bounds(nxt_closed)
+                    and nxt_closed not in gmap.obstacles
+                    and nxt_closed in allowed_closed
+                    and nxt_closed not in neighbors
+                ):
+                    neighbors.append(nxt_closed)
+        for nxt in neighbors:
+            if nxt not in seen:
+                seen.add(nxt)
+                pending.append((nxt, distance + 1))
+    return None
 
 
 def _timed_reservation_owners(

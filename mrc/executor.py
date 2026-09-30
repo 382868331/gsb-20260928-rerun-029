@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from .coordinator import Coordinator
+from .planner import DEADLINE_INFEASIBLE, PlanResult
 from .robot import Robot, RobotStatus, Task
 
 
@@ -17,6 +18,7 @@ class Executor:
         self.log_path = Path(log_path)
         self.log_path.write_text("")
         self.starvation_limit = 30
+        self.terminated_logged: set[tuple[str, str]] = set()
 
     def _log(self, event: str, **data) -> None:
         record = {"tick": self.tick, "event": event, **data}
@@ -31,6 +33,8 @@ class Executor:
             robot.status = RobotStatus.IDLE
             robot.wait_ticks = 0
             robot.last_blockers = []
+            robot.last_reason = None
+            self.terminated_logged.discard((rid, task.task_id))
             self._log(
                 "assign",
                 robot=rid,
@@ -73,12 +77,27 @@ class Executor:
             if r.status == RobotStatus.WAITING and r.last_blockers
         }
         self._log("plan", plans=plans, waiting=waiting)
+        for decision in self.coordinator.decisions:
+            self._log("task_decision", **decision)
+            if decision.get("action") == "terminate":
+                robot = self.robots[str(decision["robot"])]
+                key = (robot.robot_id, str(decision["task"]))
+                if robot.task and key not in self.terminated_logged:
+                    self.terminated_logged.add(key)
+                    self._log(
+                        "task_terminated",
+                        robot=robot.robot_id,
+                        task=robot.task.task_id,
+                        reason=robot.last_reason,
+                        blockers=robot.last_blockers,
+                    )
         for robot in self.robots.values():
-            if robot.status == RobotStatus.WAITING and robot.last_blockers:
+            if robot.status in (RobotStatus.WAITING, RobotStatus.SEARCH_LIMIT) and robot.last_blockers:
                 self._log(
-                    "blocked",
+                    "search_budget" if robot.status == RobotStatus.SEARCH_LIMIT else "blocked",
                     robot=robot.robot_id,
                     at=list(robot.pos),
+                    reason=robot.last_reason,
                     blockers=robot.last_blockers,
                 )
 
@@ -86,7 +105,14 @@ class Executor:
         if getattr(self, "_suppress_wait_replan", False):
             self._suppress_wait_replan = False
         elif any(
-            robot.status == RobotStatus.WAITING
+            robot.status == RobotStatus.WAITING and robot.robot_id in self.coordinator.exiting
+            for robot in self.robots.values()
+        ):
+            for robot in self.robots.values():
+                if robot.status == RobotStatus.WAITING and robot.robot_id in self.coordinator.exiting:
+                    self.coordinator._replan_exiting(robot, self.tick)
+        elif any(
+            robot.status in (RobotStatus.WAITING, RobotStatus.SEARCH_LIMIT)
             and robot.task is not None
             and robot.robot_id not in self.coordinator.exiting
             for robot in self.robots.values()
@@ -97,7 +123,7 @@ class Executor:
         for robot in self.robots.values():
             if robot.status == RobotStatus.PAUSED:
                 pass
-            elif robot.status in (RobotStatus.MOVING, RobotStatus.WAITING):
+            elif robot.status in (RobotStatus.MOVING, RobotStatus.WAITING, RobotStatus.SEARCH_LIMIT):
                 nxt_reserved = self.coordinator.reservations.is_free(
                     robot.planned_cell(self.tick),
                     self.tick,
@@ -105,11 +131,23 @@ class Executor:
                     owner=robot.robot_id,
                 )
                 if not nxt_reserved:
+                    was_exiting = robot.robot_id in self.coordinator.exiting
                     robot.status = RobotStatus.WAITING
                     robot.path = [robot.pos]
                     robot.plan_start = self.tick
-                    self._replan(strict=False)
-                if robot.status == RobotStatus.WAITING and robot.task.deadline is not None and self.tick > robot.task.deadline:
+                    if was_exiting:
+                        robot.last_reason = "temporary_block"
+                        robot.last_blockers = ["temporary_block"]
+                    else:
+                        self._replan(strict=False)
+                if robot.status in (RobotStatus.WAITING, RobotStatus.SEARCH_LIMIT) and robot.task.deadline is not None and self.tick > robot.task.deadline:
+                    result = PlanResult(
+                        DEADLINE_INFEASIBLE,
+                        blockers=set(robot.last_blockers or [DEADLINE_INFEASIBLE]),
+                    )
+                    self.coordinator._terminate(robot, result, self.tick, "等待后已经无法按时完成")
+                    if self.coordinator.decisions:
+                        self._log("task_decision", **self.coordinator.decisions[-1])
                     robot.task.on_time = False
                     self._log(
                         "deadline_missed",
@@ -134,9 +172,9 @@ class Executor:
                             blockers=robot.last_blockers,
                         )
                 if robot.task and robot.pos == robot.task.goal and robot.robot_id not in self.coordinator.exiting:
+                    robot.task.on_time = robot.task.deadline is None or self.tick <= robot.task.deadline
                     robot.status = RobotStatus.DONE
-                    on_time = robot.task.deadline is None or self.tick <= robot.task.deadline
-                    robot.task.on_time = on_time
+                    on_time = robot.task.on_time
                     self._log(
                         "done",
                         robot=robot.robot_id,
@@ -145,11 +183,23 @@ class Executor:
                         deadline=robot.task.deadline,
                         on_time=on_time,
                     )
-                elif robot.status == RobotStatus.WAITING and not moved:
+                elif robot.status == RobotStatus.FAILED:
+                    key = (robot.robot_id, robot.task.task_id)
+                    if key not in self.terminated_logged:
+                        self.terminated_logged.add(key)
+                        self._log(
+                            "task_terminated",
+                            robot=robot.robot_id,
+                            task=robot.task.task_id,
+                            reason=robot.last_reason,
+                            blockers=robot.last_blockers,
+                        )
+                elif robot.status in (RobotStatus.WAITING, RobotStatus.SEARCH_LIMIT) and not moved:
                     self._log(
-                        "blocked",
+                        "search_budget" if robot.status == RobotStatus.SEARCH_LIMIT else "blocked",
                         robot=robot.robot_id,
                         at=list(robot.pos),
+                        reason=robot.last_reason,
                         blockers=robot.last_blockers,
                     )
             positions[robot.robot_id] = list(robot.pos)
@@ -161,7 +211,7 @@ class Executor:
                 waiting={
                     r.robot_id: r.last_blockers
                     for r in self.robots.values()
-                    if r.status == RobotStatus.WAITING and r.last_blockers
+                    if r.status in (RobotStatus.WAITING, RobotStatus.SEARCH_LIMIT) and r.last_blockers
                 },
             )
         self._log("positions", pos=positions)
