@@ -10,6 +10,19 @@ class GridMap:
         self.width = width
         self.height = height
         self.obstacles: set[Cell] = set(obstacles or ())
+        # 运行时封闭(封路)的格:除正在退出的机器人外不得进入
+        self.closures: set[Cell] = set()
+
+    def close_cells(self, cells: set[Cell]) -> None:
+        """封闭通道区段."""
+        for cell in cells:
+            if not self.in_bounds(cell) or cell in self.obstacles:
+                raise ValueError(f"无法封闭 {cell}: 越界或障碍物")
+        self.closures |= set(cells)
+
+    def open_cells(self, cells: set[Cell]) -> None:
+        """重新开放通道区段."""
+        self.closures -= set(cells)
 
     @classmethod
     def corridor_map(cls, length: int = 8, width: int = 3) -> "GridMap":
@@ -26,15 +39,19 @@ class GridMap:
         x, y = cell
         return 0 <= x < self.width and 0 <= y < self.height
 
-    def passable(self, cell: Cell) -> bool:
-        return self.in_bounds(cell) and cell not in self.obstacles
+    def passable(self, cell: Cell, allow_closed: bool = False) -> bool:
+        if not self.in_bounds(cell) or cell in self.obstacles:
+            return False
+        if not allow_closed and cell in self.closures:
+            return False
+        return True
 
-    def neighbors(self, cell: Cell) -> list[Cell]:
+    def neighbors(self, cell: Cell, allow_closed: bool = False) -> list[Cell]:
         x, y = cell
         out = []
         for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             nxt = (x + dx, y + dy)
-            if self.passable(nxt):
+            if self.passable(nxt, allow_closed=allow_closed):
                 out.append(nxt)
         return out
 

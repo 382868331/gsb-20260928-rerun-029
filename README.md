@@ -1,21 +1,34 @@
 # 多机器人协同运行平台(共享通道协调)
 
 ## 结构
-- `mrc/gridmap.py` 栅格地图,含单宽狭窄通道场景
-- `mrc/robot.py` 机器人状态(IDLE/MOVING/PAUSED/DONE)与任务
-- `mrc/reservation.py` 时空预约表:顶点 + 边(防对向换边) + 终点永久预约
-- `mrc/planner.py` 时间窗 A*,在 (格, 时刻) 空间绕开他人预约
-- `mrc/coordinator.py` 共享预约表上的优先级规划;失败换优先级整体重排,
-  处理迎面冲突与等待死结;暂停场景尽力规划(被堵者原地等待)
-- `mrc/executor.py` tick 执行器,JSON Lines 执行记录(分配/计划/暂停/恢复/位置)
-- `mrc/replay.py` 重放检查:碰撞与安全距离、对向换边、完成情况、饥饿
+- `mrc/gridmap.py` 栅格地图,含单宽狭窄通道与运行时封闭/重开(closures)
+- `mrc/robot.py` 机器人状态(IDLE/MOVING/PAUSED/BLOCKED/EVACUATING/DONE)、
+  任务(带 `priority` 紧急优先级与 `deadline` 截止时刻)、committed 在途标记
+- `mrc/reservation.py` 时空预约表:顶点 + 无向边(防迎面换边) + 终点永久预约
+  + 限期占位(等待/暂停,不误作终点占用)
+- `mrc/planner.py` 时间窗 A*,返回三态结果:
+  feasible(有安排)/ infeasible(无可行安排,如不连通、终点被占、截止不可达)/
+  not_found(给定时间窗内尚未找到方案),blockers 给出阻挡预约来源
+- `mrc/coordinator.py` 共享预约表上的优先级规划:在途/暂停/退出预约锁定,
+  后来的高优先任务只能在剩余时空中插入,不能抢占;封路给出退出安排,
+  重开保留仍有效预约,仅重排受影响者
+- `mrc/executor.py` tick 执行器,JSON Lines 记录(分配/计划/暂停/恢复/封路/
+  重开/退出/阻塞/截止超时/位置)
+- `mrc/replay.py` 逐时刻重放:同格碰撞、对向换边、封闭区违规进入、
+  位置与生效预约逐拍一致、任务完成与截止、饥饿
 
 ## 语义
 - 所有机器人共用一张预约表,不允许各算各的最短路。
-- 暂停:占用格预约保留,不凭空释放;其余机器人绕开重排。
-- 恢复:从当前时刻、当前位置重新协调,不插队。
+- 在途预约一旦确认即 committed,后续紧急任务再高优先也不得抢占,
+  无法插入时记录 BLOCKED 与被哪些预约阻挡。
+- 封路:封闭区内机器人立即得到退出安排(EVACUATING,可穿越封闭格撤出);
+  区外在途预约穿入封闭区的部分截断,退回等待;非退出机器人进入封闭格即违规。
+- 重开:不触及封闭格且仍有效的预约原样保留;临时占位失效后统一重排。
+- 暂停:占用格以限期占位保留,不凭空释放;冲突的在途安排绕行/等待。
+- 恢复:从当前时刻、当前位置以未锁定身份重新协调,不插队。
+- 截止:最早可达晚于 deadline 判 infeasible;执行中超时记录 deadline_missed。
 - 后续任务分配沿用同一执行记录文件。
 
 ## 运行
-    python main.py            # 演示:会车 + 暂停/恢复 + 第二轮任务
-    python -m pytest tests    # 测试
+    python main.py            # 会车 + 暂停/恢复 + 封路退出/重开 + 连续紧急任务
+    python -m pytest tests    # 11 个场景测试
