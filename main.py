@@ -46,6 +46,17 @@ def main() -> None:
     report = replay(LOG)
     print(report.summary())
 
+    # 第三轮:R1 与 R3 在开阔区两侧槽位交接同一件运输物,随后 R3 送货
+    executor.register_cargo("C1", owner="R1")
+    executor.register_handover_zone("HO", carrier_slot=(10, 1), receiver_slot=(10, 2))
+    executor.request_handover(
+        "H1", cargo_id="C1", carrier="R1", receiver="R3", zone_id="HO",
+        carrier_task_id="HO-CARRY", receiver_task_id="HO-MEET",
+        delivery_task_id="HO-DELIVER", delivery_goal=(0, 1),
+    )
+    executor.run()
+    print(replay(LOG).summary())
+
 
 if __name__ == "__main__":
     main()

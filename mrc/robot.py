@@ -28,6 +28,9 @@ class Task:
     deadline: int | None = None
     on_time: bool | None = None
     terminal_reason: str | None = None
+    cargo_id: str | None = None          # 该任务段携带的运输物
+    handover_id: str | None = None       # 所属交接承诺
+    handover_role: str | None = None     # carrier / receiver / delivery
 
 
 @dataclass
@@ -42,6 +45,9 @@ class Robot:
     last_reason: str | None = None
     wait_ticks: int = 0
     total_wait: int = 0
+    handover_id: str | None = None       # 当前参与的活跃交接
+    handover_role: str | None = None
+    leg_start_cell: Cell | None = None   # 交接段起始格,用于判断承诺是否已开始
 
     @property
     def goal(self) -> Cell | None:

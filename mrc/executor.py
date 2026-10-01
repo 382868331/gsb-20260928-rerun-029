@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .coordinator import Coordinator
+from .coordinator import Coordinator, CoordinationError
+from .cargo import HandoverState
 from .planner import DEADLINE_INFEASIBLE, PlanResult
 from .robot import Robot, RobotStatus, Task
 
@@ -19,6 +20,111 @@ class Executor:
         self.log_path.write_text("")
         self.starvation_limit = 30
         self.terminated_logged: set[tuple[str, str]] = set()
+        self._handover_failures_logged: set[str] = set()
+
+    def register_cargo(self, cargo_id: str, owner: str) -> None:
+        self.coordinator.register_cargo(cargo_id, owner)
+        self._log("cargo_register", cargo=cargo_id, owner=owner)
+
+    def register_handover_zone(self, zone_id: str, carrier_slot: tuple[int, int], receiver_slot: tuple[int, int]) -> None:
+        self.coordinator.register_handover_zone(zone_id, carrier_slot, receiver_slot)
+        self._log(
+            "handover_zone",
+            zone=zone_id,
+            carrier_slot=list(carrier_slot),
+            receiver_slot=list(receiver_slot),
+        )
+
+    def request_handover(
+        self,
+        handover_id: str,
+        cargo_id: str,
+        carrier: str,
+        receiver: str,
+        zone_id: str,
+        carrier_task_id: str,
+        receiver_task_id: str,
+        delivery_task_id: str,
+        delivery_goal: tuple[int, int],
+        priority: int = 0,
+        deadline: int | None = None,
+    ) -> None:
+        """建立交接承诺并分别派发前往交接槽的两段任务,全程走同一预约表。"""
+        commitment = self.coordinator.create_handover(
+            handover_id, cargo_id, carrier, receiver, zone_id,
+            carrier_task_id, receiver_task_id, delivery_goal, delivery_task_id,
+            self.tick, priority=priority, deadline=deadline,
+        )
+        self.assign({
+            carrier: Task(
+                carrier_task_id, commitment.carrier_slot,
+                priority=priority, cargo_id=cargo_id,
+                handover_id=handover_id, handover_role="carrier",
+            ),
+            receiver: Task(
+                receiver_task_id, commitment.receiver_slot,
+                priority=priority,
+                handover_id=handover_id, handover_role="receiver",
+            ),
+        })
+        for rid in (carrier, receiver):
+            robot = self.robots[rid]
+            robot.handover_id = handover_id
+            robot.handover_role = "carrier" if rid == carrier else "receiver"
+            robot.leg_start_cell = robot.pos
+        self._log(
+            "handover_request",
+            handover=handover_id,
+            cargo=cargo_id,
+            carrier=carrier,
+            receiver=receiver,
+            zone=zone_id,
+            carrier_task=carrier_task_id,
+            receiver_task=receiver_task_id,
+            delivery_task=delivery_task_id,
+            delivery_goal=list(delivery_goal),
+            owner=self.coordinator.cargo_registry.owner_of(cargo_id),
+        )
+
+    def cancel_handover(self, handover_id: str, reason: str = "cancelled") -> None:
+        commitment = self.coordinator.cancel_handover(
+            list(self.robots.values()), handover_id, self.tick, reason,
+        )
+        self._log(
+            "handover_cancelled",
+            handover=handover_id,
+            cargo=commitment.cargo_id,
+            owner=self.coordinator.cargo_registry.owner_of(commitment.cargo_id),
+            reason=reason,
+        )
+        for rid in commitment.participants():
+            self.terminated_logged.add((rid, commitment.carrier_task if rid == commitment.carrier else commitment.receiver_task))
+
+    def repoint_handover(self, handover_id: str, new_zone_id: str) -> None:
+        commitment = self.coordinator.repoint_handover(
+            list(self.robots.values()), handover_id, new_zone_id, self.tick,
+        )
+        self._log(
+            "handover_repoint",
+            handover=handover_id,
+            zone=new_zone_id,
+            carrier_slot=list(commitment.carrier_slot),
+            receiver_slot=list(commitment.receiver_slot),
+        )
+        self._replan(strict=False)
+
+    def handover_options(self, handover_id: str, robot_id: str, evac_cell=None):
+        return self.coordinator.party_options(
+            list(self.robots.values()), handover_id, robot_id, self.tick, evac_cell,
+        )
+
+    def handover_policy(self, handover_id: str):
+        return self.coordinator.commitment_policy(handover_id)
+
+    def compare_handovers(self, handover_id: str, candidate_zones=None):
+        return self.coordinator.compare_options(
+            list(self.robots.values()), handover_id, candidate_zones,
+        )
 
     def _log(self, event: str, **data) -> None:
         record = {"tick": self.tick, "event": event, **data}
@@ -28,6 +134,26 @@ class Executor:
     def assign(self, assignments: dict[str, Task]) -> None:
         for rid, task in assignments.items():
             robot = self.robots[rid]
+            commitment = self.coordinator.cargo_registry.active_commitment_of(rid)
+            if commitment is not None and rid not in self.coordinator.handover_waiting:
+                commitment = None
+            is_handover_delivery = (
+                commitment is not None
+                and task.handover_id == commitment.handover_id
+                and task.handover_role == "delivery"
+                and rid == commitment.receiver
+            )
+            if commitment is not None and not is_handover_delivery:
+                raise CoordinationError(
+                    f"{rid} 正在执行交接 {commitment.handover_id},不能用普通任务覆盖;"
+                    "请先取消(仅未开始)或等待交接失败/完成"
+                )
+            if robot.status == RobotStatus.DONE:
+                self.coordinator.reservations.permanent = {
+                    cell: owner
+                    for cell, owner in self.coordinator.reservations.permanent.items()
+                    if owner != rid
+                }
             task.assigned_tick = self.tick
             robot.task = task
             robot.status = RobotStatus.IDLE
@@ -102,6 +228,9 @@ class Executor:
                 )
 
     def step(self) -> bool:
+        self.coordinator.fail_broken_handovers(list(self.robots.values()), self.tick)
+        for commitment in self.coordinator.failed_commitments():
+            self._emit_handover_failure(commitment)
         if getattr(self, "_suppress_wait_replan", False):
             self._suppress_wait_replan = False
         elif any(
@@ -115,6 +244,7 @@ class Executor:
             robot.status in (RobotStatus.WAITING, RobotStatus.SEARCH_LIMIT)
             and robot.task is not None
             and robot.robot_id not in self.coordinator.exiting
+            and robot.robot_id not in self.coordinator.handover_waiting
             for robot in self.robots.values()
         ):
             self._replan(strict=False)
@@ -164,14 +294,20 @@ class Executor:
                 else:
                     robot.wait_ticks += 1
                     robot.total_wait += 1
-                    if robot.wait_ticks == self.starvation_limit:
+                    if robot.wait_ticks == self.starvation_limit and robot.robot_id not in self.coordinator.handover_waiting:
                         self._log(
                             "starve_risk",
                             robot=robot.robot_id,
                             waited=robot.wait_ticks,
                             blockers=robot.last_blockers,
                         )
-                if robot.task and robot.pos == robot.task.goal and robot.robot_id not in self.coordinator.exiting:
+                if (
+                    robot.task
+                    and robot.pos == robot.task.goal
+                    and robot.robot_id not in self.coordinator.exiting
+                    and robot.robot_id not in self.coordinator.handover_waiting
+                    and not self.coordinator.is_handover_arrival(robot)
+                ):
                     robot.task.on_time = robot.task.deadline is None or self.tick <= robot.task.deadline
                     robot.status = RobotStatus.DONE
                     on_time = robot.task.on_time
@@ -183,6 +319,18 @@ class Executor:
                         deadline=robot.task.deadline,
                         on_time=on_time,
                     )
+                elif self.coordinator.is_handover_arrival(robot):
+                    commitment = self.coordinator.handover_arrival(robot, self.tick)
+                    if commitment is not None:
+                        self._log(
+                            "handover_party_arrived",
+                            handover=commitment.handover_id,
+                            robot=robot.robot_id,
+                            at=list(robot.pos),
+                            cargo=commitment.cargo_id,
+                            owner=self.coordinator.cargo_registry.owner_of(commitment.cargo_id),
+                            state=commitment.state.value,
+                        )
                 elif robot.status == RobotStatus.FAILED:
                     key = (robot.robot_id, robot.task.task_id)
                     if key not in self.terminated_logged:
@@ -214,8 +362,106 @@ class Executor:
                     if r.status in (RobotStatus.WAITING, RobotStatus.SEARCH_LIMIT) and r.last_blockers
                 },
             )
+        self.coordinator.mark_leg_started(list(self.robots.values()))
+        self.coordinator.fail_broken_handovers(list(self.robots.values()), self.tick)
+        for commitment in self.coordinator.failed_commitments():
+            self._emit_handover_failure(commitment)
+            for rid in commitment.participants():
+                robot = self.robots[rid]
+                if robot.status == RobotStatus.FAILED and robot.task:
+                    key = (rid, robot.task.task_id)
+                    if key not in self.terminated_logged:
+                        self.terminated_logged.add(key)
+                        self._log(
+                            "task_terminated",
+                            robot=rid,
+                            task=robot.task.task_id,
+                            reason=robot.last_reason,
+                            blockers=robot.last_blockers,
+                            handover=commitment.handover_id,
+                        )
+        for commitment in self.coordinator.complete_handovers(
+            list(self.robots.values()), self.tick
+        ):
+            self._log(
+                "handover_complete",
+                handover=commitment.handover_id,
+                cargo=commitment.cargo_id,
+                carrier=commitment.carrier,
+                receiver=commitment.receiver,
+                at=[list(commitment.carrier_slot), list(commitment.receiver_slot)],
+                owner=self.coordinator.cargo_registry.owner_of(commitment.cargo_id),
+            )
+            for rid, task_id in (
+                (commitment.carrier, commitment.carrier_task),
+                (commitment.receiver, commitment.receiver_task),
+            ):
+                self._log(
+                    "done",
+                    robot=rid,
+                    task=task_id,
+                    tick=self.tick,
+                    deadline=None,
+                    on_time=True,
+                    handover=commitment.handover_id,
+                )
+            if commitment.delivery_task is not None and commitment.delivery_goal is not None:
+                self.assign({
+                    commitment.receiver: Task(
+                        commitment.delivery_task,
+                        commitment.delivery_goal,
+                        priority=commitment.delivery_priority,
+                        deadline=commitment.delivery_deadline,
+                        cargo_id=commitment.cargo_id,
+                        handover_id=commitment.handover_id,
+                        handover_role="delivery",
+                    ),
+                })
+        cargo_owners = {
+            cargo_id: cargo.owner
+            for cargo_id, cargo in self.coordinator.cargo_registry.cargo.items()
+        }
+        if cargo_owners:
+            self._log("cargo_state", owners=cargo_owners)
         self._log("positions", pos=positions)
         return any(r.status not in (RobotStatus.DONE, RobotStatus.FAILED) for r in self.robots.values())
+
+    def _emit_handover_failure(self, commitment) -> None:
+        if commitment.handover_id not in self._handover_failures_logged:
+            self._handover_failures_logged.add(commitment.handover_id)
+            self._log(
+                "handover_failed",
+                handover=commitment.handover_id,
+                cargo=commitment.cargo_id,
+                owner=self.coordinator.cargo_registry.owner_of(commitment.cargo_id),
+                reason=commitment.reason,
+            )
+        for rid in commitment.participants():
+            robot = self.robots[rid]
+            task_id = robot.task.task_id if robot.task else (
+                commitment.carrier_task if rid == commitment.carrier else commitment.receiver_task
+            )
+            key = (rid, task_id)
+            if key not in self.terminated_logged:
+                self.terminated_logged.add(key)
+                reason = (
+                    robot.last_reason
+                    if robot.status == RobotStatus.FAILED and robot.last_reason
+                    else "handover_failed"
+                )
+                blockers = (
+                    robot.last_blockers
+                    if robot.status == RobotStatus.FAILED and robot.last_blockers
+                    else [commitment.reason or "handover_failed"]
+                )
+                self._log(
+                    "task_terminated",
+                    robot=rid,
+                    task=task_id,
+                    reason=reason,
+                    blockers=blockers,
+                    handover=commitment.handover_id,
+                )
 
     def run(self, max_ticks: int = 500) -> None:
         while self.step() and self.tick < max_ticks:
