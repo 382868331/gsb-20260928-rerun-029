@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 
 from .coordinator import Coordinator
-from .planner import DEADLINE_INFEASIBLE, PlanResult
+from .handoff import BOTH_PRESENT, CANCELLED, COMPLETED, PLANNED, BLOCKED, Handoff
+from .planner import DEADLINE_INFEASIBLE, PlanResult, plan_path_result
 from .robot import Robot, RobotStatus, Task
 
 
@@ -19,6 +20,8 @@ class Executor:
         self.log_path.write_text("")
         self.starvation_limit = 30
         self.terminated_logged: set[tuple[str, str]] = set()
+        self.cargo: dict[str, str] = {}
+        self.handoffs: dict[str, Handoff] = {}
 
     def _log(self, event: str, **data) -> None:
         record = {"tick": self.tick, "event": event, **data}
@@ -43,6 +46,10 @@ class Executor:
                 priority=task.priority,
                 deadline=task.deadline,
             )
+        if self.handoffs:
+            active = [h for h in self.handoffs.values() if h.state not in (COMPLETED, CANCELLED)]
+            if active:
+                self._log("handoff_commitments", **self.commitments())
         self._replan(strict=False)
 
     def pause(self, robot_id: str) -> None:
@@ -203,6 +210,7 @@ class Executor:
                         blockers=robot.last_blockers,
                     )
             positions[robot.robot_id] = list(robot.pos)
+        self._update_handoffs()
         reached = self.coordinator.reconcile(list(self.robots.values()), self.tick)
         if reached:
             self._log(
@@ -215,8 +223,281 @@ class Executor:
                 },
             )
         self._log("positions", pos=positions)
-        return any(r.status not in (RobotStatus.DONE, RobotStatus.FAILED) for r in self.robots.values())
+        if any(
+            r.task is not None and r.status not in (RobotStatus.DONE, RobotStatus.FAILED)
+            for r in self.robots.values()
+        ):
+            return True
+        # 双方已到位但交接尚未完成的,继续推进直到归属转交
+        return any(
+            ho.state in (PLANNED, BOTH_PRESENT)
+            and all(self.robots[rid].status != RobotStatus.FAILED for rid in (ho.giver, ho.receiver))
+            for ho in self.handoffs.values()
+        )
 
     def run(self, max_ticks: int = 500) -> None:
         while self.step() and self.tick < max_ticks:
             pass
+
+    # ---------- 交接:双方到位后转交同一件运输物 ----------
+
+    def assign_handoff(
+        self,
+        handoff_id: str,
+        cargo_id: str,
+        giver: str,
+        receiver: str,
+        zone: tuple[tuple[int, int], tuple[int, int]],
+        alternatives: list[tuple[tuple[int, int], tuple[int, int]]] | None = None,
+        priority: int = 0,
+        deadline: int | None = None,
+    ) -> None:
+        """登记一次交接:双方各自走普通规划进入交接区,不绕过通道预约."""
+        if giver == receiver:
+            raise ValueError("交接双方不能是同一机器人")
+        owner = self.cargo.get(cargo_id)
+        if owner is not None and owner != giver:
+            raise ValueError(f"货物 {cargo_id} 当前归属 {owner},不能由 {giver} 交出")
+        handoff = Handoff(
+            handoff_id=handoff_id,
+            cargo_id=cargo_id,
+            giver=giver,
+            receiver=receiver,
+            zone=(tuple(zone[0]), tuple(zone[1])),
+            alternatives=[(tuple(a), tuple(b)) for a, b in (alternatives or [])],
+            planned_tick=self.tick,
+        )
+        self.handoffs[handoff_id] = handoff
+        self.cargo[cargo_id] = giver
+        self._log(
+            "handoff_planned",
+            handoff=handoff_id,
+            cargo=cargo_id,
+            giver=giver,
+            receiver=receiver,
+            zone=[list(handoff.zone[0]), list(handoff.zone[1])],
+            alternatives=[[list(a), list(b)] for a, b in handoff.alternatives],
+            owner=giver,
+        )
+        self.assign({
+            giver: Task(f"{handoff_id}:deliver", handoff.zone[0], priority=priority, deadline=deadline),
+            receiver: Task(f"{handoff_id}:collect", handoff.zone[1], priority=priority, deadline=deadline),
+        })
+
+    def handoff_options(self, handoff_id: str) -> dict[str, object]:
+        """一方延迟/故障/取消时,另一方可等待、撤离或改换交接点的条件."""
+        ho = self.handoffs[handoff_id]
+        owner = self.cargo.get(ho.cargo_id, ho.giver)
+        other_id = ho.receiver if owner == ho.giver else ho.giver
+        other = self.robots[other_id]
+        temporary = other.status in (
+            RobotStatus.MOVING, RobotStatus.WAITING, RobotStatus.SEARCH_LIMIT, RobotStatus.PAUSED,
+        )
+        relocate = []
+        for alt in ho.alternatives:
+            viable = all(
+                self.coordinator.gmap.passable(cell)
+                and self.coordinator.reservations.permanent.get(cell) in (None, ho.giver, ho.receiver)
+                for cell in alt
+            )
+            relocate.append({"zone": [list(alt[0]), list(alt[1])], "viable": viable})
+        return {
+            "owner": owner,
+            "state": ho.state,
+            "wait": {
+                "viable": temporary,
+                "condition": "对方阻塞为临时占用/暂停/在途时可等待其恢复;已故障终止则不可等待",
+            },
+            "withdraw": {
+                "viable": not ho.started,
+                "condition": "交接未开始时非持有方可撤离;持有方保留货物,归属不变",
+            },
+            "relocate": relocate,
+        }
+
+    def compare_handoff(self, handoff_id: str) -> list[dict[str, object]]:
+        """比较原交接与替代交接方案;只读评估,不改写已执行路径和预约."""
+        ho = self.handoffs[handoff_id]
+        giver = self.robots[ho.giver]
+        receiver = self.robots[ho.receiver]
+        out = []
+        for label, zone in [("original", ho.zone)] + [
+            (f"alternative_{i}", alt) for i, alt in enumerate(ho.alternatives)
+        ]:
+            etas: dict[str, int | None] = {}
+            feasible = True
+            blockers: set[str] = set()
+            for robot, cell in ((giver, zone[0]), (receiver, zone[1])):
+                if robot.pos == cell:
+                    etas[robot.robot_id] = self.tick
+                    continue
+                result = plan_path_result(
+                    self.coordinator.gmap,
+                    self.coordinator.reservations,
+                    robot.pos,
+                    cell,
+                    self.tick,
+                    self.coordinator.horizon,
+                    robot_id=robot.robot_id,
+                )
+                if result.found:
+                    etas[robot.robot_id] = self.tick + len(result.path) - 1
+                else:
+                    etas[robot.robot_id] = None
+                    feasible = False
+                    blockers.update(result.blockers)
+            out.append({
+                "plan": label,
+                "zone": [list(zone[0]), list(zone[1])],
+                "feasible": feasible,
+                "eta": {rid: eta for rid, eta in etas.items()},
+                "blockers": sorted(blockers),
+            })
+        return out
+
+    def switch_handoff(self, handoff_id: str, zone: tuple[tuple[int, int], tuple[int, int]]) -> bool:
+        """改换交接点:仅限尚未开始的承诺;已执行路径与预约保持原样."""
+        ho = self.handoffs[handoff_id]
+        if not ho.adjustable:
+            self._log("handoff_switch_refused", handoff=handoff_id, state=ho.state)
+            return False
+        ho.zone = (tuple(zone[0]), tuple(zone[1]))
+        if ho.state == BLOCKED:
+            ho.state = PLANNED
+        self._log(
+            "handoff_switched",
+            handoff=handoff_id,
+            zone=[list(ho.zone[0]), list(ho.zone[1])],
+            owner=self.cargo.get(ho.cargo_id),
+        )
+        self.assign({
+            ho.giver: Task(f"{handoff_id}:deliver", ho.zone[0]),
+            ho.receiver: Task(f"{handoff_id}:collect", ho.zone[1]),
+        })
+        return True
+
+    def cancel_handoff(self, handoff_id: str) -> bool:
+        """取消交接:仅限未开始;货物归属保持现状,双方任务撤回."""
+        ho = self.handoffs[handoff_id]
+        if not ho.adjustable:
+            self._log("handoff_cancel_refused", handoff=handoff_id, state=ho.state)
+            return False
+        ho.state = CANCELLED
+        for rid in (ho.giver, ho.receiver):
+            robot = self.robots[rid]
+            if robot.task and robot.task.task_id.startswith(handoff_id + ":"):
+                self.coordinator._release_future(robot, self.tick)
+                self.coordinator.reservations.release_hold(rid)
+                robot.task = None
+                robot.path = [robot.pos]
+                robot.plan_start = self.tick
+                robot.status = RobotStatus.IDLE
+                robot.last_blockers = []
+                robot.last_reason = None
+                self.coordinator.reservations.reserve_hold(rid, robot.pos)
+        self._log("handoff_cancelled", handoff=handoff_id, owner=self.cargo.get(ho.cargo_id))
+        self._replan(strict=False)
+        return True
+
+    def commitments(self) -> dict[str, list[str]]:
+        """紧急任务插入时:哪些交接承诺可调整,哪些已开始不能撤回."""
+        adjustable, locked = [], []
+        for ho in self.handoffs.values():
+            if ho.state in (COMPLETED, CANCELLED) or ho.started:
+                locked.append(ho.handoff_id)
+            else:
+                adjustable.append(ho.handoff_id)
+        return {"adjustable": sorted(adjustable), "locked": sorted(locked)}
+
+    def save_snapshot(self, path: str | Path) -> None:
+        """保存货物归属与交接状态;无论何时保存,归属始终唯一."""
+        data = {
+            "tick": self.tick,
+            "cargo": dict(self.cargo),
+            "handoffs": [ho.to_dict() for ho in self.handoffs.values()],
+            "terminal_tasks": self.coordinator.terminal_tasks,
+        }
+        Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=2))
+
+    def load_snapshot(self, path: str | Path) -> None:
+        """恢复快照:已完成交接不重复搬运,已终止任务不复活."""
+        data = json.loads(Path(path).read_text())
+        settled_cargo = {
+            ho.cargo_id: ho.receiver
+            for ho in self.handoffs.values() if ho.state == COMPLETED
+        }
+        for rec in data.get("handoffs", []):
+            handoff = Handoff.from_dict(rec)
+            existing = self.handoffs.get(handoff.handoff_id)
+            if existing is not None and existing.state in (COMPLETED, CANCELLED):
+                continue  # 已完结的交接不被旧快照复活
+            if handoff.state == COMPLETED:
+                self.cargo[handoff.cargo_id] = handoff.receiver
+                settled_cargo[handoff.cargo_id] = handoff.receiver
+            self.handoffs[handoff.handoff_id] = handoff
+        for cargo_id, owner in data.get("cargo", {}).items():
+            if cargo_id in settled_cargo:
+                self.cargo[cargo_id] = settled_cargo[cargo_id]  # 已完成的归属不回滚
+            else:
+                self.cargo[cargo_id] = owner
+        for task_id, record in data.get("terminal_tasks", {}).items():
+            self.coordinator.terminal_tasks.setdefault(task_id, record)
+
+    def _update_handoffs(self) -> None:
+        for ho in self.handoffs.values():
+            if ho.state in (COMPLETED, CANCELLED):
+                continue
+            giver = self.robots[ho.giver]
+            receiver = self.robots[ho.receiver]
+            failed = [
+                robot.robot_id for robot in (giver, receiver)
+                if robot.status == RobotStatus.FAILED
+            ]
+            if failed:
+                if ho.state != BLOCKED:
+                    ho.state = BLOCKED
+                    self._log(
+                        "handoff_blocked",
+                        handoff=ho.handoff_id,
+                        cargo=ho.cargo_id,
+                        failed=failed,
+                        owner=self.cargo.get(ho.cargo_id),
+                        options=self.handoff_options(ho.handoff_id),
+                    )
+                continue
+            giver_in = giver.pos == ho.zone[0]
+            receiver_in = receiver.pos == ho.zone[1]
+            if ho.state in (PLANNED, BLOCKED) and giver_in and receiver_in:
+                ho.state = BOTH_PRESENT
+                ho.started_tick = self.tick
+                self._log(
+                    "handoff_started",
+                    handoff=ho.handoff_id,
+                    cargo=ho.cargo_id,
+                    zone=[list(ho.zone[0]), list(ho.zone[1])],
+                    owner=self.cargo.get(ho.cargo_id),
+                )
+            elif ho.state == BOTH_PRESENT:
+                if giver_in and receiver_in:
+                    ho.state = COMPLETED
+                    ho.completed_tick = self.tick
+                    self.cargo[ho.cargo_id] = ho.receiver
+                    self._log(
+                        "handoff_complete",
+                        handoff=ho.handoff_id,
+                        cargo=ho.cargo_id,
+                        giver=ho.giver,
+                        receiver=ho.receiver,
+                        owner=ho.receiver,
+                    )
+                else:
+                    ho.state = BLOCKED
+                    self._log(
+                        "handoff_blocked",
+                        handoff=ho.handoff_id,
+                        cargo=ho.cargo_id,
+                        failed=[],
+                        reason="party_left_zone",
+                        owner=self.cargo.get(ho.cargo_id),
+                        options=self.handoff_options(ho.handoff_id),
+                    )

@@ -17,6 +17,9 @@ class ReplayReport:
     starved: list[str] = field(default_factory=list)
     blocked_reasons: dict[str, list[str]] = field(default_factory=dict)
     terminated: list[str] = field(default_factory=list)
+    ownership_violations: list[str] = field(default_factory=list)
+    handoff_violations: list[str] = field(default_factory=list)
+    resurrected: list[str] = field(default_factory=list)
     decision_reasons: dict[str, list[str]] = field(default_factory=dict)
     ticks: int = 0
 
@@ -27,6 +30,9 @@ class ReplayReport:
             or self.edge_swaps
             or self.closed_violations
             or self.unfinished
+            or self.ownership_violations
+            or self.handoff_violations
+            or self.resurrected
         )
 
     def summary(self) -> str:
@@ -36,6 +42,10 @@ class ReplayReport:
             f"闯封闭区: {len(self.closed_violations)}  超时: {len(self.deadline_misses)}"
         )
         lines.append(f"未完成: {self.unfinished or '无'}  饥饿风险: {self.starved or '无'}")
+        lines.append(
+            f"归属异常: {self.ownership_violations or '无'}  "
+            f"交接异常: {self.handoff_violations or '无'}  复活任务: {self.resurrected or '无'}"
+        )
         if self.blocked_reasons:
             reasons = "; ".join(f"{rid}: {','.join(reasons)}" for rid, reasons in self.blocked_reasons.items())
             lines.append(f"阻塞原因: {reasons}")
@@ -54,12 +64,78 @@ def replay(log_path: str | Path, starvation_limit: int = 30) -> ReplayReport:
     closed: set[tuple[int, int]] = set()
     closures: list[set[tuple[int, int]]] = []
     exiting_allowed: set[str] = set()
+    cargo_owner: dict[str, str] = {}
+    handoffs: dict[str, dict] = {}
+    completed_handoffs: set[str] = set()
+    cancelled_handoffs: set[str] = set()
+    released: set[str] = set()
+    terminated_tasks: set[str] = set()
+    pending_zone_checks: list[tuple[int, str]] = []
 
     for line in Path(log_path).read_text().splitlines():
         rec = json.loads(line)
         ev = rec["event"]
         if ev == "assign":
             assigned.add(rec["robot"])
+            task_id = str(rec.get("task"))
+            if task_id in terminated_tasks:
+                report.resurrected.append(
+                    f"tick {rec['tick']}: 已终止任务 {task_id} 被重新分配给 {rec['robot']}"
+                )
+        elif ev == "handoff_planned":
+            hid = rec["handoff"]
+            if hid in completed_handoffs or hid in cancelled_handoffs:
+                report.handoff_violations.append(
+                    f"tick {rec['tick']}: 已完结交接 {hid} 被重复规划"
+                )
+            handoffs[hid] = {
+                "cargo": rec["cargo"],
+                "giver": rec["giver"],
+                "receiver": rec["receiver"],
+                "zone": (tuple(rec["zone"][0]), tuple(rec["zone"][1])),
+                "started": False,
+            }
+            owner = cargo_owner.get(rec["cargo"])
+            if owner is not None and owner != rec["giver"]:
+                report.ownership_violations.append(
+                    f"tick {rec['tick']}: 货物 {rec['cargo']} 归属 {owner},却由 {rec['giver']} 交出"
+                )
+            cargo_owner[rec["cargo"]] = rec["giver"]
+        elif ev == "handoff_switched":
+            info = handoffs.get(rec["handoff"])
+            if info is not None:
+                info["zone"] = (tuple(rec["zone"][0]), tuple(rec["zone"][1]))
+        elif ev == "handoff_started":
+            hid = rec["handoff"]
+            if hid in handoffs:
+                handoffs[hid]["started"] = True
+        elif ev == "handoff_complete":
+            hid = rec["handoff"]
+            info = handoffs.get(hid)
+            if hid in completed_handoffs:
+                report.handoff_violations.append(
+                    f"tick {rec['tick']}: 交接 {hid} 重复完成(重复搬运)"
+                )
+            elif info is None or not info["started"]:
+                report.handoff_violations.append(
+                    f"tick {rec['tick']}: 交接 {hid} 未等双方到齐就完成"
+                )
+            else:
+                cargo = info["cargo"]
+                if cargo_owner.get(cargo) != info["giver"]:
+                    report.ownership_violations.append(
+                        f"tick {rec['tick']}: 交接 {hid} 完成前货物 {cargo} 归属异常"
+                    )
+                cargo_owner[cargo] = info["receiver"]
+                pending_zone_checks.append((rec["tick"], hid))
+            completed_handoffs.add(hid)
+        elif ev == "handoff_cancelled":
+            hid = rec["handoff"]
+            cancelled_handoffs.add(hid)
+            info = handoffs.get(hid)
+            if info:
+                released.add(info["giver"])
+                released.add(info["receiver"])
         elif ev == "done":
             done.add(rec["robot"])
             if rec.get("on_time") is False:
@@ -74,6 +150,7 @@ def replay(log_path: str | Path, starvation_limit: int = 30) -> ReplayReport:
                 report.blocked_reasons.setdefault(rec["robot"], []).extend(rec["blockers"])
         elif ev == "task_terminated":
             terminated.add(rec["robot"])
+            terminated_tasks.add(str(rec["task"]))
             reason = f"{rec['task']}={rec.get('reason', 'infeasible')}"
             report.terminated.append(f"{rec['robot']} {reason}: {','.join(rec.get('blockers') or [])}")
             report.blocked_reasons.setdefault(rec["robot"], []).append(reason)
@@ -143,9 +220,18 @@ def replay(log_path: str | Path, starvation_limit: int = 30) -> ReplayReport:
                         report.starved.append(f"{rid} 连续 {starvation_limit} ticks 未移动")
                 else:
                     wait_run[rid] = 0
+            for check_tick, hid in pending_zone_checks:
+                if check_tick == tick and hid in handoffs:
+                    info = handoffs[hid]
+                    zone = info["zone"]
+                    if pos.get(info["giver"]) != zone[0] or pos.get(info["receiver"]) != zone[1]:
+                        report.handoff_violations.append(
+                            f"tick {tick}: 交接 {hid} 完成时双方未都在交接区"
+                        )
+            pending_zone_checks = [c for c in pending_zone_checks if c[0] > tick]
             prev = pos
 
-    report.unfinished = sorted(assigned - done - terminated)
+    report.unfinished = sorted(assigned - done - terminated - released)
     for rid, reasons in list(report.blocked_reasons.items()):
         unique: list[str] = []
         for reason in reasons:

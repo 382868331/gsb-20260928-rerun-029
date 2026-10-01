@@ -1,4 +1,4 @@
-"""演示:狭窄通道会车 + 暂停/恢复 + 第二轮任务沿用同一执行记录."""
+"""演示:狭窄通道会车 + 暂停/恢复 + 第二轮任务 + 双机器人交接."""
 
 from mrc.coordinator import Coordinator
 from mrc.executor import Executor
@@ -42,6 +42,20 @@ def main() -> None:
         "R3": Task("T5", (11, 2)),
     })
     executor.run()
+
+    # 第三轮:R1 把货物 C1 在交接区转交给 R3,双方到齐后归属一次性转移
+    executor.assign_handoff(
+        "H1", "C1", giver="R1", receiver="R3",
+        zone=((1, 0), (0, 0)),
+        alternatives=[((1, 2), (0, 2))],
+    )
+    for plan in executor.compare_handoff("H1"):
+        print("交接方案:", plan)
+    executor.save_snapshot("handoff_snapshot.json")
+    executor.run()
+    print("货物归属:", executor.cargo, " 交接状态:", executor.handoffs["H1"].state)
+    print("交接承诺:", executor.commitments())
+    print()
 
     report = replay(LOG)
     print(report.summary())
