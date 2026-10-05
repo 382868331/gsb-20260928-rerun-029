@@ -63,3 +63,26 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def demo_relay() -> None:
+    """接力运输:R1 经托管区 S1 把货物交给 R2,中途比较三种安排."""
+    gmap = GridMap.corridor_map(length=6, width=3)
+    robots = [Robot("R1", (0, 1)), Robot("R2", (9, 1)), Robot("R3", (9, 0))]
+    executor = Executor(Coordinator(gmap), robots, LOG)
+    executor.add_staging_area("S1", [((0, 0), (0, 1)), ((1, 0), (1, 1))], capacity=1)
+    executor.assign_relay("RL1", "C9", ["R1", "R2"], [("stage", "S1")], final_goal=(9, 1))
+    for plan in executor.compare_relay("RL1"):
+        print("接力方案:", plan)
+    executor.step()
+    executor.step()
+    executor.save_snapshot("relay_snapshot.json")  # 已放下、未领取时保存
+    print("托管中归属:", executor.cargo["C9"])
+    executor.run()
+    print("接力完成归属:", executor.cargo["C9"], " 状态:", executor.relays["RL1"].state)
+    report = replay(LOG)
+    print(report.summary())
+
+
+if __name__ == "__main__":
+    demo_relay()

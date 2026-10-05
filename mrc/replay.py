@@ -19,6 +19,8 @@ class ReplayReport:
     terminated: list[str] = field(default_factory=list)
     ownership_violations: list[str] = field(default_factory=list)
     handoff_violations: list[str] = field(default_factory=list)
+    relay_violations: list[str] = field(default_factory=list)
+    staging_violations: list[str] = field(default_factory=list)
     resurrected: list[str] = field(default_factory=list)
     decision_reasons: dict[str, list[str]] = field(default_factory=dict)
     ticks: int = 0
@@ -32,6 +34,8 @@ class ReplayReport:
             or self.unfinished
             or self.ownership_violations
             or self.handoff_violations
+            or self.relay_violations
+            or self.staging_violations
             or self.resurrected
         )
 
@@ -45,6 +49,10 @@ class ReplayReport:
         lines.append(
             f"归属异常: {self.ownership_violations or '无'}  "
             f"交接异常: {self.handoff_violations or '无'}  复活任务: {self.resurrected or '无'}"
+        )
+        lines.append(
+            f"接力异常: {self.relay_violations or '无'}  "
+            f"托管异常: {self.staging_violations or '无'}"
         )
         if self.blocked_reasons:
             reasons = "; ".join(f"{rid}: {','.join(reasons)}" for rid, reasons in self.blocked_reasons.items())
@@ -71,6 +79,15 @@ def replay(log_path: str | Path, starvation_limit: int = 30) -> ReplayReport:
     released: set[str] = set()
     terminated_tasks: set[str] = set()
     pending_zone_checks: list[tuple[int, str]] = []
+    relays: dict[str, dict] = {}
+    completed_legs: set[str] = set()
+    cancelled_legs: set[str] = set()
+    leg_carrier: dict[str, str] = {}
+    leg_note: dict[str, object] = {}
+    expected_picker: dict[str, str] = {}
+    slot_cargo: dict[str, str] = {}
+    slot_area: dict[str, str] = {}
+    area_capacity: dict[str, int] = {}
 
     for line in Path(log_path).read_text().splitlines():
         rec = json.loads(line)
@@ -84,10 +101,11 @@ def replay(log_path: str | Path, starvation_limit: int = 30) -> ReplayReport:
                 )
         elif ev == "handoff_planned":
             hid = rec["handoff"]
-            if hid in completed_handoffs or hid in cancelled_handoffs:
+            if hid in completed_handoffs:
                 report.handoff_violations.append(
                     f"tick {rec['tick']}: 已完结交接 {hid} 被重复规划"
                 )
+            cancelled_handoffs.discard(hid)
             handoffs[hid] = {
                 "cargo": rec["cargo"],
                 "giver": rec["giver"],
@@ -136,6 +154,112 @@ def replay(log_path: str | Path, starvation_limit: int = 30) -> ReplayReport:
             if info:
                 released.add(info["giver"])
                 released.add(info["receiver"])
+        elif ev == "staging_area":
+            area_capacity[rec["area"]] = int(rec["capacity"])
+            for item in rec.get("slots", []):
+                slot_area[item["slot"]] = rec["area"]
+        elif ev == "relay_planned":
+            rid = rec["relay"]
+            if rid in relays and relays[rid]["state"] not in ("completed", "cancelled"):
+                report.relay_violations.append(
+                    f"tick {rec['tick']}: 接力 {rid} 未完结却被重复规划"
+                )
+            if any(info["cargo"] == rec["cargo"] and info["state"] not in ("completed", "cancelled")
+                   for info in relays.values()):
+                report.relay_violations.append(
+                    f"tick {rec['tick']}: 货物 {rec['cargo']} 被拆进多个接力计划"
+                )
+            relays[rid] = {"cargo": rec["cargo"], "state": "active"}
+            owner = cargo_owner.get(rec["cargo"])
+            if owner is not None and owner != rec["owner"]:
+                report.ownership_violations.append(
+                    f"tick {rec['tick']}: 货物 {rec['cargo']} 归属 {owner},却由 {rec['owner']} 承运"
+                )
+            cargo_owner[rec["cargo"]] = rec["owner"]
+        elif ev == "relay_leg_started":
+            leg_id = rec["leg"]
+            if leg_id in completed_legs:
+                report.relay_violations.append(
+                    f"tick {rec['tick']}: 已完成段 {leg_id} 被重新执行(重复搬运)"
+                )
+            if (leg_id in leg_carrier and leg_id not in cancelled_legs
+                    and not (leg_note.get(leg_id) == "pickup" and rec.get("note") != "pickup")):
+                report.relay_violations.append(
+                    f"tick {rec['tick']}: 段 {leg_id} 未完成却被重复启动"
+                )
+            leg_carrier[leg_id] = rec["carrier"]
+            leg_note[leg_id] = rec.get("note")
+            cancelled_legs.discard(leg_id)
+            if rec.get("note") == "pickup":
+                expected_picker[rec["relay"]] = rec["carrier"]
+        elif ev == "stage_placed":
+            slot_id = rec["slot"]
+            cargo = rec["cargo"]
+            if slot_cargo.get(slot_id) is not None:
+                report.staging_violations.append(
+                    f"tick {rec['tick']}: 托管位 {slot_id} 已被 {slot_cargo[slot_id]} 占用,仍放入 {cargo}"
+                )
+            slot_cargo[slot_id] = cargo
+            area = slot_area.get(slot_id)
+            if area is not None:
+                staged = sum(1 for sid, c in slot_cargo.items()
+                             if c is not None and slot_area.get(sid) == area)
+                if staged > area_capacity.get(area, 0):
+                    report.staging_violations.append(
+                        f"tick {rec['tick']}: 托管区 {area} 超出容量 {area_capacity.get(area)}"
+                    )
+            if cargo_owner.get(cargo) != rec["placer"]:
+                report.ownership_violations.append(
+                    f"tick {rec['tick']}: 货物 {cargo} 归属 {cargo_owner.get(cargo)},却由 {rec['placer']} 放入"
+                )
+            cargo_owner[cargo] = rec["owner"]
+        elif ev == "stage_picked":
+            slot_id = rec["slot"]
+            cargo = rec["cargo"]
+            if slot_cargo.get(slot_id) != cargo:
+                report.staging_violations.append(
+                    f"tick {rec['tick']}: 托管位 {slot_id} 中没有货物 {cargo} 却被取走"
+                )
+            slot_cargo[slot_id] = None
+            if cargo_owner.get(cargo) != f"slot:{slot_id}":
+                report.ownership_violations.append(
+                    f"tick {rec['tick']}: 货物 {cargo} 不在托管位 {slot_id} 却被领取"
+                )
+            want = expected_picker.get(rec["relay"])
+            if want is not None and want != rec["picker"]:
+                report.relay_violations.append(
+                    f"tick {rec['tick']}: 货物 {cargo} 被非承运方 {rec['picker']} 取走(应为 {want})"
+                )
+            cargo_owner[cargo] = rec["picker"]
+        elif ev == "relay_leg_completed":
+            completed_legs.add(rec["leg"])
+        elif ev == "relay_blocked":
+            pass
+        elif ev == "relay_replanned":
+            rid = rec["relay"]
+            if rid in relays:
+                relays[rid]["state"] = "active"
+            for leg_id in list(leg_carrier):
+                if leg_id.startswith(rid + ":") and leg_id not in completed_legs:
+                    cancelled_legs.add(leg_id)
+        elif ev == "relay_cancelled":
+            rid = rec["relay"]
+            if rid in relays:
+                relays[rid]["state"] = "cancelled"
+            for leg_id in list(leg_carrier):
+                if leg_id.startswith(rid + ":") and leg_id not in completed_legs:
+                    cancelled_legs.add(leg_id)
+        elif ev == "relay_completed":
+            rid = rec["relay"]
+            if rid in relays:
+                relays[rid]["state"] = "completed"
+        elif ev == "snapshot_restored":
+            for cargo, owner in rec.get("cargo", {}).items():
+                cargo_owner[cargo] = owner
+            for slot_id, cargo in rec.get("slots", {}).items():
+                slot_cargo[slot_id] = cargo
+        elif ev == "task_withdrawn":
+            released.add(rec["robot"])
         elif ev == "done":
             done.add(rec["robot"])
             if rec.get("on_time") is False:

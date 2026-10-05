@@ -38,6 +38,7 @@ class Coordinator:
         self.evacuating_tasks: set[str] = set()
         self.terminal_tasks: dict[str, dict[str, object]] = {}
         self.decisions: list[dict[str, object]] = []
+        self.external_holds: dict[Cell, str] = {}  # 托管位静置格等外部占用
 
     def _record_decision(self, robot: Robot, action: str, tick: int, result: PlanResult) -> None:
         self.decisions.append({
@@ -334,6 +335,9 @@ class Coordinator:
                 idx = start_tick - robot.plan_start
                 if idx < len(robot.path):
                     self.reservations.vertex[(robot.path[idx], start_tick)] = robot.robot_id
+        for cell, owner in self.external_holds.items():
+            self.reservations.holds[cell] = owner
+            self.reservations.permanent[cell] = owner
 
     def _clear_replanned_futures(self, robots: list[Robot], start_tick: int) -> None:
         for robot in robots:
