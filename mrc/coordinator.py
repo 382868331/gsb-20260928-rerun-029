@@ -303,10 +303,14 @@ class Coordinator:
             cell: owner for cell, owner in self.reservations.goal.items() if owner in active_ids
         }
         self.reservations.holds = {
-            cell: owner for cell, owner in self.reservations.holds.items() if owner in active_ids
+            cell: owner
+            for cell, owner in self.reservations.holds.items()
+            if owner in active_ids or owner.startswith("staging:")
         }
         self.reservations.permanent = {
-            cell: owner for cell, owner in self.reservations.permanent.items() if owner in active_ids
+            cell: owner
+            for cell, owner in self.reservations.permanent.items()
+            if owner in active_ids or owner.startswith("staging:")
         }
         for robot in robots:
             if robot.status == RobotStatus.DONE:

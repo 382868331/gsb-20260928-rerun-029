@@ -57,6 +57,26 @@ def main() -> None:
     print("交接承诺:", executor.commitments())
     print()
 
+    # 第四轮:接力运输 + 临时托管,R1 放到托管区,R3 稍后取出继续送
+    executor.add_staging_area("S1", {(1, 2): (1, 1)})
+    executor.assign_relay("RL1", "C2", [
+        {"kind": "carry", "carrier": "R1", "to": (1, 1)},
+        {"kind": "stage", "area": "S1", "slot": (1, 2)},
+        {"kind": "carry", "carrier": "R3", "to": (11, 1)},
+    ])
+    for plan in executor.compare_relay(
+        "C2", (11, 1), reliever="R3", area_id="S1", slot=(1, 2),
+        handoff_zone=((1, 1), (0, 1)),
+    ):
+        print("接力方案:", plan)
+    executor.save_snapshot("relay_snapshot.json")
+    while executor.cargo.get("C2") != "staging:S1@1,2":
+        executor.step()
+    executor.assign({"R1": Task("T6", (0, 2))})  # 放下后让出取放站位
+    executor.run()
+    print("货物归属:", executor.cargo, " 接力承诺:", executor.relay_commitments())
+    print()
+
     report = replay(LOG)
     print(report.summary())
 

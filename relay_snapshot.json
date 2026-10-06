@@ -1,0 +1,109 @@
+{
+  "tick": 60,
+  "cargo": {
+    "C1": "R3",
+    "C2": "R1"
+  },
+  "handoffs": [
+    {
+      "handoff_id": "H1",
+      "cargo_id": "C1",
+      "giver": "R1",
+      "receiver": "R3",
+      "zone": [
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "alternatives": [
+        [
+          [
+            1,
+            2
+          ],
+          [
+            0,
+            2
+          ]
+        ]
+      ],
+      "state": "completed",
+      "planned_tick": 46,
+      "started_tick": 59,
+      "completed_tick": 60
+    }
+  ],
+  "staging": [
+    {
+      "area_id": "S1",
+      "slots": {
+        "1,2": [
+          1,
+          1
+        ]
+      },
+      "ops_per_tick": 1,
+      "occupancy": {}
+    }
+  ],
+  "relays": [
+    {
+      "relay_id": "RL1",
+      "cargo_id": "C2",
+      "state": "active",
+      "legs": [
+        {
+          "leg_id": "RL1:L0",
+          "index": 0,
+          "kind": "carry",
+          "carrier": "R1",
+          "to": [
+            1,
+            1
+          ],
+          "zone": null,
+          "area_id": null,
+          "slot": null,
+          "state": "active",
+          "executed_tick": null
+        },
+        {
+          "leg_id": "RL1:L1",
+          "index": 1,
+          "kind": "stage",
+          "carrier": null,
+          "to": null,
+          "zone": null,
+          "area_id": "S1",
+          "slot": [
+            1,
+            2
+          ],
+          "state": "planned",
+          "executed_tick": null
+        },
+        {
+          "leg_id": "RL1:L2",
+          "index": 2,
+          "kind": "carry",
+          "carrier": "R3",
+          "to": [
+            11,
+            1
+          ],
+          "zone": null,
+          "area_id": null,
+          "slot": null,
+          "state": "planned",
+          "executed_tick": null
+        }
+      ]
+    }
+  ],
+  "terminal_tasks": {}
+}

@@ -19,6 +19,7 @@ class ReplayReport:
     terminated: list[str] = field(default_factory=list)
     ownership_violations: list[str] = field(default_factory=list)
     handoff_violations: list[str] = field(default_factory=list)
+    staging_violations: list[str] = field(default_factory=list)
     resurrected: list[str] = field(default_factory=list)
     decision_reasons: dict[str, list[str]] = field(default_factory=dict)
     ticks: int = 0
@@ -32,6 +33,7 @@ class ReplayReport:
             or self.unfinished
             or self.ownership_violations
             or self.handoff_violations
+            or self.staging_violations
             or self.resurrected
         )
 
@@ -46,6 +48,7 @@ class ReplayReport:
             f"归属异常: {self.ownership_violations or '无'}  "
             f"交接异常: {self.handoff_violations or '无'}  复活任务: {self.resurrected or '无'}"
         )
+        lines.append(f"托管异常: {self.staging_violations or '无'}")
         if self.blocked_reasons:
             reasons = "; ".join(f"{rid}: {','.join(reasons)}" for rid, reasons in self.blocked_reasons.items())
             lines.append(f"阻塞原因: {reasons}")
@@ -71,6 +74,11 @@ def replay(log_path: str | Path, starvation_limit: int = 30) -> ReplayReport:
     released: set[str] = set()
     terminated_tasks: set[str] = set()
     pending_zone_checks: list[tuple[int, str]] = []
+    staging_areas: dict[str, dict] = {}
+    slot_occupancy: dict[tuple[int, int], str] = {}
+    slot_ops: dict[tuple[tuple[int, int], int], int] = {}
+    staged_cargo: dict[str, tuple[int, int]] = {}
+    relay_carriers: dict[str, set[str]] = {}
 
     for line in Path(log_path).read_text().splitlines():
         rec = json.loads(line)
@@ -136,6 +144,86 @@ def replay(log_path: str | Path, starvation_limit: int = 30) -> ReplayReport:
             if info:
                 released.add(info["giver"])
                 released.add(info["receiver"])
+        elif ev == "staging_area":
+            staging_areas[rec["area"]] = {
+                "slots": {tuple(s) for s in rec["slots"]},
+                "ops": int(rec.get("ops_per_tick", 1)),
+            }
+        elif ev in ("relay_planned", "relay_replanned"):
+            legs = rec.get("legs") or rec.get("new_legs") or []
+            relay_carriers[rec["relay"]] = {
+                str(leg["carrier"]) for leg in legs if leg.get("carrier")
+            }
+            owner = rec.get("owner")
+            if owner is not None:
+                prev_owner = cargo_owner.get(rec["cargo"])
+                if prev_owner is not None and prev_owner != owner:
+                    report.ownership_violations.append(
+                        f"tick {rec['tick']}: 货物 {rec['cargo']} 归属 {prev_owner},接力计划却记为 {owner}"
+                    )
+                cargo_owner[rec["cargo"]] = owner
+        elif ev in ("stage_place", "stage_pick"):
+            slot = tuple(rec["slot"])
+            cargo = rec["cargo"]
+            tick = rec["tick"]
+            area_id = rec["area"]
+            owner_id = f"staging:{area_id}@{slot[0]},{slot[1]}"
+            key = (area_id, tick)
+            slot_ops[key] = slot_ops.get(key, 0) + 1
+            limit = staging_areas.get(area_id, {}).get("ops", 1)
+            if slot_ops[key] > limit:
+                report.staging_violations.append(
+                    f"tick {tick}: 托管区 {area_id} 一刻内取放次数超过限制 {limit}"
+                )
+            if ev == "stage_place":
+                if slot in slot_occupancy:
+                    report.staging_violations.append(
+                        f"tick {tick}: 托管位 {slot} 已有 {slot_occupancy[slot]},又放入 {cargo}"
+                    )
+                if cargo_owner.get(cargo) != rec["carrier"]:
+                    report.ownership_violations.append(
+                        f"tick {tick}: 货物 {cargo} 归属 {cargo_owner.get(cargo)},却由 {rec['carrier']} 放置"
+                    )
+                if cargo in staged_cargo:
+                    report.staging_violations.append(
+                        f"tick {tick}: 货物 {cargo} 未被取出就重复放置"
+                    )
+                cargo_owner[cargo] = owner_id
+                slot_occupancy[slot] = cargo
+                staged_cargo[cargo] = slot
+            else:
+                if cargo_owner.get(cargo) != owner_id:
+                    report.ownership_violations.append(
+                        f"tick {tick}: 货物 {cargo} 不在托管位 {slot},却被取出"
+                    )
+                if slot_occupancy.get(slot) != cargo:
+                    report.staging_violations.append(
+                        f"tick {tick}: 托管位 {slot} 中没有货物 {cargo},取出无效"
+                    )
+                carrier = rec["carrier"]
+                if carrier in terminated:
+                    report.staging_violations.append(
+                        f"tick {tick}: 货物 {cargo} 被交给已失去资格的接收者 {carrier}"
+                    )
+                allowed = relay_carriers.get(rec.get("relay"), set())
+                if allowed and carrier not in allowed:
+                    report.staging_violations.append(
+                        f"tick {tick}: {carrier} 不是接力 {rec.get('relay')} 的承运人,不能取走 {cargo}"
+                    )
+                cargo_owner[cargo] = carrier
+                slot_occupancy.pop(slot, None)
+                staged_cargo.pop(cargo, None)
+        elif ev == "relay_cancelled":
+            released.update(rec.get("released") or [])
+        elif ev == "snapshot_loaded":
+            for area in rec.get("staging", []):
+                for key, cargo in dict(area.get("occupancy", {})).items():
+                    x, y = key.split(",")
+                    slot = (int(x), int(y))
+                    slot_occupancy[slot] = cargo
+                    staged_cargo[cargo] = slot
+            for cargo, owner in dict(rec.get("cargo", {})).items():
+                cargo_owner[cargo] = owner
         elif ev == "done":
             done.add(rec["robot"])
             if rec.get("on_time") is False:
